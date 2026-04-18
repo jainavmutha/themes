@@ -14,7 +14,25 @@ const SUPABASE_QUOTES_TABLE = "themes_quotes";
 const DEFAULT_LOGO_URL = import.meta.env.VITE_DEFAULT_LOGO_URL || "https://drive.google.com/uc?export=view&id=1zPOSv3lHBukCB7QtZrD-oc3j8T8YxbYx";
 const DEFAULT_SIGNATURE_URL = import.meta.env.VITE_DEFAULT_SIGNATURE_URL || "https://drive.google.com/uc?export=view&id=1w4OXKhD37BWQfAit1zOTBGlHK1YpfZqn";
 const DEFAULT_PAYMENT_QR_URL = import.meta.env.VITE_DEFAULT_PAYMENT_QR_URL || "https://drive.google.com/uc?export=view&id=1fCy8MlBWYX2SrOpe52FQ4EIDo777nP4s";
+
 const DEFAULT_PAYMENT_UPI_ID = import.meta.env.VITE_DEFAULT_PAYMENT_UPI_ID || "";
+
+function normalizeImageUrl(url) {
+  if (!url) return "";
+  const raw = String(url).trim();
+
+  const driveFileMatch = raw.match(/drive\.google\.com\/file\/d\/([^/]+)/);
+  if (driveFileMatch?.[1]) {
+    return `https://drive.google.com/uc?export=view&id=${driveFileMatch[1]}`;
+  }
+
+  const driveOpenMatch = raw.match(/[?&]id=([^&]+)/);
+  if (raw.includes("drive.google.com") && driveOpenMatch?.[1]) {
+    return `https://drive.google.com/uc?export=view&id=${driveOpenMatch[1]}`;
+  }
+
+  return raw;
+}
 
 function hasSupabaseConfig() {
   return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
@@ -197,6 +215,7 @@ function loadSettings() {
    ========================= */
 async function imageToDataURL(url) {
   if (!url) return null;
+  url = normalizeImageUrl(url);
   if (url.startsWith('data:image')) return url;
   try {
     const img = new Image();
@@ -253,7 +272,7 @@ const BRAND = {
   text: "#2B2A29",
   muted: "#6B6B6B",
   border: "#D6CFC9",
-  logoUrl: DEFAULT_LOGO_URL,
+  logoUrl: normalizeImageUrl(DEFAULT_LOGO_URL),
   companyName: "Themes Furnishings & Decor",
   pdfCompanyName: "Themes Furnishings & Decor",
   website: "www.themesfurnishings.com",
@@ -261,7 +280,7 @@ const BRAND = {
   email: "themesfurnishings@hotmail.com",
   address: "141 MG Road, Pune 411040",
   gstin: "GSTIN: 27AAACT1234F1Z5",
-  paymentQrUrl: DEFAULT_PAYMENT_QR_URL,
+  paymentQrUrl: normalizeImageUrl(DEFAULT_PAYMENT_QR_URL),
   paymentUpiId: DEFAULT_PAYMENT_UPI_ID,
 };
 
@@ -1050,7 +1069,7 @@ export default function CurtainQuotationApp() {
     commercials: {
       applyGst: false, gstRate: 0, discountType: "percent", discountValue: 0,
       place: "Pune", signatoryName: "Authorized Signatory", signatoryTitle: "",
-      signatureUrl: DEFAULT_SIGNATURE_URL, needGstBill: false, gstin: "", billingAddress: "",
+      signatureUrl: normalizeImageUrl(DEFAULT_SIGNATURE_URL), needGstBill: false, gstin: "", billingAddress: "",
     },
   });
 
@@ -1193,7 +1212,7 @@ export default function CurtainQuotationApp() {
       place: "Pune",
       signatoryName: "Authorized Signatory",
       signatoryTitle: "",
-      signatureUrl: DEFAULT_SIGNATURE_URL,
+      signatureUrl: normalizeImageUrl(DEFAULT_SIGNATURE_URL),
       needGstBill: false,
       gstin: "",
       billingAddress: "",
@@ -1471,7 +1490,7 @@ export default function CurtainQuotationApp() {
         {/* Header */}
         <div className="hero-box">
           <div className="hero-brand">
-            {quoteMeta.company.logoUrl && <img src={quoteMeta.company.logoUrl} alt="Logo" className="hero-logo" />}
+            {quoteMeta.company.logoUrl && <img src={normalizeImageUrl(quoteMeta.company.logoUrl)} alt="Logo" className="hero-logo" />}
             <div>
               <h1 className="hero-title">Curtain Quotation</h1>
               <p className="hero-subtitle">Themes Furnishings & Decor</p>
