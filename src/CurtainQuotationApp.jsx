@@ -11,6 +11,11 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 const SUPABASE_QUOTES_TABLE = "themes_quotes";
 
+const DEFAULT_LOGO_URL = import.meta.env.VITE_DEFAULT_LOGO_URL || "https://drive.google.com/file/d/1zPOSv3lHBukCB7QtZrD-oc3j8T8YxbYx/view?usp=drive_link";
+const DEFAULT_SIGNATURE_URL = import.meta.env.VITE_DEFAULT_SIGNATURE_URL || "https://drive.google.com/file/d/1w4OXKhD37BWQfAit1zOTBGlHK1YpfZqn/view?usp=sharing";
+const DEFAULT_PAYMENT_QR_URL = import.meta.env.VITE_DEFAULT_PAYMENT_QR_URL || "https://drive.google.com/file/d/1fCy8MlBWYX2SrOpe52FQ4EIDo777nP4s/view?usp=sharing";
+const DEFAULT_PAYMENT_UPI_ID = import.meta.env.VITE_DEFAULT_PAYMENT_UPI_ID || "";
+
 function hasSupabaseConfig() {
   return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 }
@@ -248,7 +253,7 @@ const BRAND = {
   text: "#2B2A29",
   muted: "#6B6B6B",
   border: "#D6CFC9",
-  logoUrl: "https://2.imimg.com/data2/IO/LU/MY-3117159/themes-furnishing-linens-private-limited-logo.png",
+  logoUrl: DEFAULT_LOGO_URL,
   companyName: "Themes Furnishings & Decor",
   pdfCompanyName: "Themes Furnishings & Decor",
   website: "www.themesfurnishings.com",
@@ -256,8 +261,8 @@ const BRAND = {
   email: "themesfurnishings@hotmail.com",
   address: "141 MG Road, Pune 411040",
   gstin: "GSTIN: 27AAACT1234F1Z5",
-  paymentQrUrl: "",
-  paymentUpiId: "",
+  paymentQrUrl: DEFAULT_PAYMENT_QR_URL,
+  paymentUpiId: DEFAULT_PAYMENT_UPI_ID,
 };
 
 const GLOBAL_CSS = `
@@ -1038,14 +1043,14 @@ export default function CurtainQuotationApp() {
       name: BRAND.companyName, pdfCompanyName: BRAND.pdfCompanyName,
       address: BRAND.address, phone: BRAND.phone, email: BRAND.email,
       logoUrl: BRAND.logoUrl, website: BRAND.website, gstin: BRAND.gstin,
-      paymentQrUrl: "", paymentUpiId: "",
+      paymentQrUrl: BRAND.paymentQrUrl, paymentUpiId: BRAND.paymentUpiId,
     },
     currency: "INR",
     notes: "Prices are exclusive of taxes. Valid for 7 days.",
     commercials: {
       applyGst: false, gstRate: 0, discountType: "percent", discountValue: 0,
       place: "Pune", signatoryName: "Authorized Signatory", signatoryTitle: "",
-      signatureUrl: "", needGstBill: false, gstin: "", billingAddress: "",
+      signatureUrl: DEFAULT_SIGNATURE_URL, needGstBill: false, gstin: "", billingAddress: "",
     },
   });
 
@@ -1175,8 +1180,8 @@ export default function CurtainQuotationApp() {
       logoUrl: BRAND.logoUrl,
       website: BRAND.website,
       gstin: BRAND.gstin,
-      paymentQrUrl: "",
-      paymentUpiId: "",
+      paymentQrUrl: BRAND.paymentQrUrl,
+      paymentUpiId: BRAND.paymentUpiId,
     },
     currency: "INR",
     notes: "Prices are exclusive of taxes. Valid for 7 days.",
@@ -1188,7 +1193,7 @@ export default function CurtainQuotationApp() {
       place: "Pune",
       signatoryName: "Authorized Signatory",
       signatoryTitle: "",
-      signatureUrl: "",
+      signatureUrl: DEFAULT_SIGNATURE_URL,
       needGstBill: false,
       gstin: "",
       billingAddress: "",
