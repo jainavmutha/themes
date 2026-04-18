@@ -23,14 +23,24 @@ function normalizeImageUrl(url) {
 
   const driveFileMatch = raw.match(/drive\.google\.com\/file\/d\/([^/]+)/);
   if (driveFileMatch?.[1]) {
-    return `https://drive.google.com/uc?export=view&id=${driveFileMatch[1]}`;
+    return `https://drive.google.com/thumbnail?id=${driveFileMatch[1]}&sz=w1000`;
   }
 
-  const driveOpenMatch = raw.match(/[?&]id=([^&]+)/);
-  if (raw.includes("drive.google.com") && driveOpenMatch?.[1]) {
-    return `https://drive.google.com/uc?export=view&id=${driveOpenMatch[1]}`;
+  const driveIdMatch = raw.match(/[?&]id=([^&]+)/);
+  if (raw.includes("drive.google.com") && driveIdMatch?.[1]) {
+    return `https://drive.google.com/thumbnail?id=${driveIdMatch[1]}&sz=w1000`;
   }
 
+  return raw;
+}
+
+function googleDrivePdfUrl(url) {
+  if (!url) return "";
+  const raw = String(url).trim();
+  const driveFileMatch = raw.match(/drive\.google\.com\/file\/d\/([^/]+)/);
+  if (driveFileMatch?.[1]) return `https://drive.google.com/uc?export=download&id=${driveFileMatch[1]}`;
+  const driveIdMatch = raw.match(/[?&]id=([^&]+)/);
+  if (raw.includes("drive.google.com") && driveIdMatch?.[1]) return `https://drive.google.com/uc?export=download&id=${driveIdMatch[1]}`;
   return raw;
 }
 
@@ -215,7 +225,7 @@ function loadSettings() {
    ========================= */
 async function imageToDataURL(url) {
   if (!url) return null;
-  url = normalizeImageUrl(url);
+  url = googleDrivePdfUrl(url);
   if (url.startsWith('data:image')) return url;
   try {
     const img = new Image();
