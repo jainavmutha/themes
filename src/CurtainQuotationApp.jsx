@@ -166,6 +166,7 @@ async function getQuoteRecord(quoteNo) {
   return map[quoteNo] || null;
 }
 
+
 async function deleteQuoteRecord(quoteNo) {
   if (hasSupabaseConfig()) {
     await supabaseFetch(`/rest/v1/${SUPABASE_QUOTES_TABLE}?quote_no=eq.${encodeURIComponent(quoteNo)}`, {
@@ -178,6 +179,42 @@ async function deleteQuoteRecord(quoteNo) {
   const map = await loadAllQuotes();
   delete map[quoteNo];
   await saveAllQuotes(map);
+}
+
+// Remote settings helpers
+
+
+async function loadRemoteSettings() {
+  if (!hasSupabaseConfig()) return null;
+  const rows = await supabaseFetch(`/rest/v1/${SUPABASE_SETTINGS_TABLE}?select=value&key=eq.${encodeURIComponent(SETTINGS_ROW_ID)}&limit=1`);
+  return rows?.[0]?.value || null;
+}
+
+async function saveRemoteSettings(settings) {
+  if (!hasSupabaseConfig()) return;
+  await supabaseFetch(`/rest/v1/${SUPABASE_SETTINGS_TABLE}?on_conflict=key`, {
+    method: "POST",
+    body: JSON.stringify({
+      key: SETTINGS_ROW_ID,
+      value: settings,
+      updated_at: new Date().toISOString(),
+    }),
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+  });
+}
+
+function mergeSettingsWithDefaults(value) {
+  const saved = value || {};
+  return {
+    ...DEFAULT_SETTINGS,
+    ...saved,
+    stitchingTypes: Array.isArray(saved.stitchingTypes) && saved.stitchingTypes.length
+      ? saved.stitchingTypes : DEFAULT_SETTINGS.stitchingTypes,
+    linings: Array.isArray(saved.linings) && saved.linings.length
+      ? saved.linings : DEFAULT_SETTINGS.linings,
+    tracks: Array.isArray(saved.tracks) && saved.tracks.length
+      ? saved.tracks : DEFAULT_SETTINGS.tracks,
+  };
 }
 
 /* =========================
@@ -1110,10 +1147,66 @@ async function generateFullPDF(rooms, meta, settings) {
    ========================= */
 export default function CurtainQuotationApp() {
   const [settings, setSettings] = useState(loadSettings);
+const [settingsReady, setSettingsReady] = useState(!hasSupabaseConfig());
+const settingsHydratedRef = useRef(false);
 
-  useEffect(() => {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  }, [settings]);
+useEffect(() => {
+  let cancelled = false;
+
+  async function hydrateSettings() {
+    if (!hasSupabaseConfig()) {
+      settingsHydratedRef.current = true;
+      setSettingsReady(true);
+      return;
+    }
+
+    try {
+      const remoteSettings = await loadRemoteSettings();
+
+      if (cancelled) return;
+
+      if (remoteSettings) {
+        const merged = mergeSettingsWithDefaults(remoteSettings);
+        setSettings(merged);
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
+      } else {
+        await saveRemoteSettings(settings);
+      }
+    } catch (err) {
+      console.error("Could not load shared settings", err);
+      if (!cancelled) {
+        setLoadedBanner("Could not load shared settings. Using this browser's settings.");
+      }
+    } finally {
+      if (!cancelled) {
+        settingsHydratedRef.current = true;
+        setSettingsReady(true);
+      }
+    }
+  }
+
+  hydrateSettings();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
+
+useEffect(() => {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+
+  if (!settingsHydratedRef.current) return;
+  if (!hasSupabaseConfig()) return;
+
+  const timer = setTimeout(() => {
+    saveRemoteSettings(settings).catch((err) => {
+      console.error("Could not save shared settings", err);
+      setLoadedBanner("Could not save settings online. Please check Supabase setup.");
+    });
+  }, 500);
+
+  return () => clearTimeout(timer);
+}, [settings]);
 
   const [rooms, setRooms] = useState(() => [BlankRoom(1, loadSettings())]);
   const [quoteNo, setQuoteNo] = useState("");
