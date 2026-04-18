@@ -819,9 +819,9 @@ function drawGroupedSummarySection(doc, m, y, rooms, settings, commercials) {
   const ensureSpace = (neededH) => { if ((y + neededH) > (ph - footerGuard)) { doc.addPage(); y = m; } return y; };
   const rightText = (text, x, lineY) => { const safeText = String(text ?? ''); const w = doc.getTextWidth(safeText); doc.text(safeText, x - w, lineY); };
 
-  const colAmount = 80, colRate = 80, colQty = 72, colRoom = 130;
-  const colFabric = tw - colRoom - colQty - colRate - colAmount;
-  const colFabricX = m, colRoomX = colFabricX + colFabric, colQtyX = colRoomX + colRoom, colRateX = colQtyX + colQty, colAmountX = colRateX + colRate;
+  const colAmount = 90, colRate = 90, colQty = 90;
+  const colRoom = tw - colQty - colRate - colAmount;
+  const colRoomX = m, colQtyX = colRoomX + colRoom, colRateX = colQtyX + colQty, colAmountX = colRateX + colRate;
 
   const fabricRows = buildFabricSummaryRows(rooms, settings);
   const fabricTotal = Math.round(fabricRows.reduce((sum, row) => sum + Number(row.amount || 0), 0));
@@ -871,7 +871,6 @@ function drawGroupedSummarySection(doc, m, y, rooms, settings, commercials) {
 
   y = ensureSpace(50); y = drawSectionHeader(doc, m, y, 'FABRIC SUMMARY');
   const fabricColDefs = [
-    { title: 'Fabric', x: colFabricX, w: colFabric, align: 'left' },
     { title: 'Room(s)', x: colRoomX, w: colRoom, align: 'left' },
     { title: 'Total Cloth', x: colQtyX, w: colQty, align: 'right' },
     { title: 'Rate/m', x: colRateX, w: colRate, align: 'right' },
@@ -883,7 +882,7 @@ function drawGroupedSummarySection(doc, m, y, rooms, settings, commercials) {
   if (!fabricRows.length) {
     const rowH = baseRowH; doc.setFillColor(255, 255, 255); doc.rect(m, y, tw, rowH, 'F'); doc.setDrawColor(...pdfColor(BRAND.grid)); doc.rect(m, y, tw, rowH, 'S'); doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(80, 80, 80); pdfText(doc, 'No fabric rows available', m + 8, y + 14); y += rowH;
   } else {
-    fabricRows.forEach((row, idx) => { const roomLabel = (row.roomNames || []).join(' + '); const rowH = drawDataRow(y, idx, [row.label, roomLabel, `${row.qtyMeters.toFixed(2)} m`, `Rs.${numberWithCommas(row.rate)}`, `Rs.${numberWithCommas(row.amount)}`], fabricColDefs); y += rowH; });
+    fabricRows.forEach((row, idx) => { const roomLabel = (row.roomNames || []).join(' + '); const rowH = drawDataRow(y, idx, [roomLabel, `${row.qtyMeters.toFixed(2)} m`, `Rs.${numberWithCommas(row.rate)}`, `Rs.${numberWithCommas(row.amount)}`], fabricColDefs); y += rowH; });
   }
   { const rowH = baseRowH; doc.setFillColor(...pdfColor('#FFF7ED')); doc.rect(m, y, tw, rowH, 'F'); doc.setDrawColor(...pdfColor(BRAND.grid)); doc.rect(m, y, tw, rowH, 'S'); doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(30, 30, 30); pdfText(doc, 'Fabric Sub-Total', m + 8, y + 14); rightText(`Rs.${numberWithCommas(fabricTotal)}`, m + tw - 8, y + 14); y += rowH; }
   if (hasDiscount) {
