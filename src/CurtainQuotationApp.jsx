@@ -1033,13 +1033,48 @@ async function generateRoomPDF(room, meta, settings) {
   return doc;
 }
 
+function estimateFullPdfHeight(rooms, settings) {
+  const effectiveRooms = rooms.filter(r => r.include !== false);
+  const fabricRowCount = buildFabricSummaryRows(effectiveRooms, settings).length || 1;
+
+  const roomCosts = effectiveRooms.map(room => ({ room, cost: computeRoomCost(room, settings) }));
+  let otherRowCount = 0;
+
+  const stitchKeys = new Set();
+  const liningKeys = new Set();
+  const trackKeys = new Set();
+  let hasInstall = false;
+
+  roomCosts.forEach(({ room, cost }) => {
+    if (Math.round(cost.stitchingCost || 0) > 0) stitchKeys.add(room.stitching?.id || 'none');
+    if (Math.round(cost.liningCost || 0) > 0) liningKeys.add(room.lining?.id || 'none');
+    if (Math.round(cost.trackCost || 0) > 0) trackKeys.add(room.track?.id || 'none');
+    if (Math.round(cost.installationCost || 0) > 0) hasInstall = true;
+  });
+
+  otherRowCount = stitchKeys.size + liningKeys.size + trackKeys.size + (hasInstall ? 1 : 0);
+  if (!otherRowCount) otherRowCount = 1;
+
+  const headerHeight = 120;
+  const gstHeight = meta?.commercials?.needGstBill ? 60 : 0;
+  const sectionHeaders = 120;
+  const fabricTableHeight = 70 + fabricRowCount * 32;
+  const otherTableHeight = 70 + otherRowCount * 32;
+  const finalPanelHeight = 260;
+  const safetyPadding = 360;
+
+  return Math.max(1200, headerHeight + gstHeight + sectionHeaders + fabricTableHeight + otherTableHeight + finalPanelHeight + safetyPadding);
+}
+
 async function generateFullPDF(rooms, meta, settings) {
   const logoDataURL = await imageToDataURL(meta.company.logoUrl);
   const paymentQrDataURL = await imageToDataURL(meta.company.paymentQrUrl);
   const sigDataURL = await imageToDataURL(meta.commercials.signatureUrl);
   if (paymentQrDataURL) meta = { ...meta, company: { ...meta.company, paymentQrUrl: paymentQrDataURL } };
   const m = 36;
-  const doc = new jsPDF({ orientation: 'p', unit: 'pt', format: 'a4' });
+  const pageWidth = 595.28;
+  const pageHeight = estimateFullPdfHeight(rooms, settings);
+  const doc = new jsPDF({ orientation: 'p', unit: 'pt', format: [pageWidth, pageHeight] });
   let y = drawHeader(doc, m, meta, logoDataURL);
   y = drawGstBlock(doc, m, y, meta);
   y = drawSectionHeader(doc, m, y, meta.quoteNo ? `QUOTATION - ${meta.quoteNo}` : 'QUOTATION');
