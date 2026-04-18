@@ -66,13 +66,19 @@ async function supabaseFetch(path, options = {}) {
     headers: supabaseHeaders(options.headers || {}),
   });
 
+  const text = await res.text().catch(() => "");
+
   if (!res.ok) {
-    const message = await res.text().catch(() => "");
-    throw new Error(message || `Supabase request failed with status ${res.status}`);
+    throw new Error(text || `Supabase request failed with status ${res.status}`);
   }
 
-  if (res.status === 204) return null;
-  return res.json();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
 
 function rowToQuoteRecord(row) {
