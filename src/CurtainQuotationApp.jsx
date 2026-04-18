@@ -815,7 +815,7 @@ function drawGroupedSummarySection(doc, m, y, rooms, settings, commercials) {
   const pw = doc.internal.pageSize.getWidth();
   const ph = doc.internal.pageSize.getHeight();
   const tw = pw - 2 * m;
-  const footerGuard = 120;
+  const footerGuard = 24;
   const ensureSpace = (neededH) => { if ((y + neededH) > (ph - footerGuard)) { doc.addPage(); y = m; } return y; };
   const rightText = (text, x, lineY) => { const safeText = String(text ?? ''); const w = doc.getTextWidth(safeText); doc.text(safeText, x - w, lineY); };
 
@@ -934,7 +934,7 @@ function drawFinalSummaryPanel(doc, m, y, meta, summary, sigDataURL) {
   if (meta.commercials.applyGst && summary.gstAmount > 0) lines.push({ label: `GST (${meta.commercials.gstRate || 0}%)`, value: `Rs.${numberWithCommas(summary.gstAmount)}`, bold: false, highlight: false });
   lines.push({ label: 'GRAND TOTAL', value: `Rs.${numberWithCommas(summary.finalTotal)}`, bold: true, highlight: true, grandTotal: true });
   const rowH = 22, signatureH = 62, totalsH = lines.length * rowH, blockH = Math.max(180, totalsH + signatureH + 8);
-  if (y + blockH > ph - 40) { doc.addPage(); y = m + 12; }
+  if (y + blockH > ph - 24) { y = Math.max(m, ph - blockH - 24); }
   y = drawSectionHeader(doc, m, y, 'GRAND TOTAL SUMMARY');
   doc.setDrawColor(...pdfColor(BRAND.grid)); doc.setLineWidth(0.5); doc.roundedRect(leftX, y, halfW, blockH, 6, 6, 'S');
   doc.setFont("helvetica", "bold"); doc.setFontSize(10.5); doc.setTextColor(...pdfColor(BRAND.primary));
@@ -1035,11 +1035,9 @@ async function generateRoomPDF(room, meta, settings) {
 
 function estimateFullPdfHeight(rooms, meta, settings) {
   const effectiveRooms = rooms.filter(r => r.include !== false);
-  const fabricRowCount = buildFabricSummaryRows(effectiveRooms, settings).length || 1;
+  const fabricRowCount = Math.max(1, buildFabricSummaryRows(effectiveRooms, settings).length);
 
   const roomCosts = effectiveRooms.map(room => ({ room, cost: computeRoomCost(room, settings) }));
-  let otherRowCount = 0;
-
   const stitchKeys = new Set();
   const liningKeys = new Set();
   const trackKeys = new Set();
@@ -1052,19 +1050,43 @@ function estimateFullPdfHeight(rooms, meta, settings) {
     if (Math.round(cost.installationCost || 0) > 0) hasInstall = true;
   });
 
-  otherRowCount = stitchKeys.size + liningKeys.size + trackKeys.size + (hasInstall ? 1 : 0);
-  if (!otherRowCount) otherRowCount = 1;
+  const otherRowCount = Math.max(
+    1,
+    stitchKeys.size + liningKeys.size + trackKeys.size + (hasInstall ? 1 : 0)
+  );
 
-  const headerHeight = 120;
-  const gstHeight = meta?.commercials?.needGstBill ? 60 : 0;
-  const sectionHeaders = 120;
-  const fabricTableHeight = 70 + fabricRowCount * 32;
-  const otherTableHeight = 70 + otherRowCount * 32;
-  const finalPanelHeight = 260;
-  const safetyPadding = 360;
+  const discountType = meta?.commercials?.discountType;
+  const discountValue = Number(meta?.commercials?.discountValue || 0);
+  const hasDiscount = discountType === "percent"
+    ? discountValue > 0
+    : Math.round(discountValue) > 0;
 
-  return Math.max(1200, headerHeight + gstHeight + sectionHeaders + fabricTableHeight + otherTableHeight + finalPanelHeight + safetyPadding);
+  const headerBlock = 116;
+  const gstBlock = meta?.commercials?.needGstBill ? 52 : 0;
+  const quotationTitle = 34;
+
+  const fabricSection =
+    30 +
+    22 +
+    fabricRowCount * 24 +
+    24 +
+    (hasDiscount ? 48 : 0);
+
+  const otherSection =
+    42 +
+    22 +
+    otherRowCount * 24 +
+    24;
+
+  const finalSummary = 220;
+  const bottomPadding = 28;
+
+  return Math.max(
+    842,
+    Math.ceil(headerBlock + gstBlock + quotationTitle + fabricSection + otherSection + finalSummary + bottomPadding)
+  );
 }
+  
 
 async function generateFullPDF(rooms, meta, settings) {
   const logoDataURL = await imageToDataURL(meta.company.logoUrl);
