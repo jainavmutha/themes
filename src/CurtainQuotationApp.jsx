@@ -1033,7 +1033,7 @@ async function generateRoomPDF(room, meta, settings) {
   return doc;
 }
 
-function estimateFullPdfHeight(rooms, settings) {
+function estimateFullPdfHeight(rooms, meta, settings) {
   const effectiveRooms = rooms.filter(r => r.include !== false);
   const fabricRowCount = buildFabricSummaryRows(effectiveRooms, settings).length || 1;
 
@@ -1073,15 +1073,13 @@ async function generateFullPDF(rooms, meta, settings) {
   if (paymentQrDataURL) meta = { ...meta, company: { ...meta.company, paymentQrUrl: paymentQrDataURL } };
   const m = 36;
   const pageWidth = 595.28;
-  const pageHeight = estimateFullPdfHeight(rooms, settings);
+  const pageHeight = estimateFullPdfHeight(rooms, meta, settings);
   const doc = new jsPDF({ orientation: 'p', unit: 'pt', format: [pageWidth, pageHeight] });
   let y = drawHeader(doc, m, meta, logoDataURL);
   y = drawGstBlock(doc, m, y, meta);
   y = drawSectionHeader(doc, m, y, meta.quoteNo ? `QUOTATION - ${meta.quoteNo}` : 'QUOTATION');
   const all = computeAllTotals(rooms, meta.commercials, settings);
   y = drawGroupedSummarySection(doc, m, y, rooms, settings, meta.commercials);
-  const ph = doc.internal.pageSize.getHeight();
-  if (y + 205 > ph - 40) { doc.addPage(); y = m + 12; }
   drawFinalSummaryPanel(doc, m, y, meta, all.summary, sigDataURL);
   return doc;
 }
@@ -1552,9 +1550,14 @@ export default function CurtainQuotationApp() {
     </button>
     <button
       onClick={async () => {
-        const meta = { ...quoteMeta, quoteNo };
-        const doc = await generateFullPDF(rooms, meta, settings);
-        doc.save(`Quote_${quoteMeta.customerName || "Customer"}_${quoteNo || "Draft"}.pdf`);
+        try {
+          const meta = { ...quoteMeta, quoteNo };
+          const doc = await generateFullPDF(rooms, meta, settings);
+          doc.save(`Quote_${quoteMeta.customerName || "Customer"}_${quoteNo || "Draft"}.pdf`);
+        } catch (err) {
+          console.error("Could not download full PDF", err);
+          setLoadedBanner("Could not download PDF. Please check the quotation details/images and try again.");
+        }
       }}
       className="btn btn-outline btn-sm"
     >
