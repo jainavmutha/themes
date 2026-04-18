@@ -7,6 +7,48 @@ import { jsPDF } from "jspdf";
    ========================= */
 const LS_QUOTES_KEY = "themes_quotes_v1";
 const LS_SEQ_PREFIX = "themes_seq_";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+const SUPABASE_QUOTES_TABLE = "themes_quotes";
+
+function hasSupabaseConfig() {
+  return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+}
+
+function supabaseHeaders(extra = {}) {
+  return {
+    apikey: SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    "Content-Type": "application/json",
+    Prefer: "return=representation",
+    ...extra,
+  };
+}
+
+async function supabaseFetch(path, options = {}) {
+  const res = await fetch(`${SUPABASE_URL}${path}`, {
+    ...options,
+    headers: supabaseHeaders(options.headers || {}),
+  });
+
+  if (!res.ok) {
+    const message = await res.text().catch(() => "");
+    throw new Error(message || `Supabase request failed with status ${res.status}`);
+  }
+
+  if (res.status === 204) return null;
+  return res.json();
+}
+
+function rowToQuoteRecord(row) {
+  if (!row) return null;
+  return {
+    ...(row.data || {}),
+    quoteNo: row.quote_no,
+    createdAt: row.created_at || row.data?.createdAt,
+    updatedAt: row.updated_at || row.data?.updatedAt,
+  };
+}
 
 function yyyymm(d = new Date()) {
   const y = d.getFullYear();
@@ -14,15 +56,35 @@ function yyyymm(d = new Date()) {
   return `${y}${m}`;
 }
 
-function loadAllQuotes() {
+async function loadAllQuotes() {
+  if (hasSupabaseConfig()) {
+    const rows = await supabaseFetch(`/rest/v1/${SUPABASE_QUOTES_TABLE}?select=quote_no,data,created_at,updated_at&order=updated_at.desc`);
+    return (rows || []).reduce((map, row) => {
+      const rec = rowToQuoteRecord(row);
+      if (rec?.quoteNo) map[rec.quoteNo] = rec;
+      return map;
+    }, {});
+  }
+
   try { return JSON.parse(localStorage.getItem(LS_QUOTES_KEY) || '{}'); } catch { return {}; }
 }
 
-function saveAllQuotes(map) {
+async function saveAllQuotes(map) {
   localStorage.setItem(LS_QUOTES_KEY, JSON.stringify(map));
 }
 
-function nextMonthlySeq() {
+async function nextMonthlySeq() {
+  if (hasSupabaseConfig()) {
+    const d = new Date();
+    const YY = String(d.getFullYear()).slice(-2);
+    const MM = String(d.getMonth() + 1).padStart(2, '0');
+    const prefix = `TF-${YY}${MM}-`;
+    const rows = await supabaseFetch(`/rest/v1/${SUPABASE_QUOTES_TABLE}?select=quote_no&quote_no=like.${encodeURIComponent(prefix + '%')}&order=quote_no.desc&limit=1`);
+    const lastNo = rows?.[0]?.quote_no || "";
+    const lastSeq = Number(lastNo.split('-').pop() || 0);
+    return Number.isFinite(lastSeq) ? lastSeq + 1 : 1;
+  }
+
   const key = LS_SEQ_PREFIX + yyyymm();
   let n = +(localStorage.getItem(key) || '0');
   n += 1;
@@ -30,23 +92,59 @@ function nextMonthlySeq() {
   return n;
 }
 
-function generateQuoteNo() {
+async function generateQuoteNo() {
   const d = new Date();
   const YY = String(d.getFullYear()).slice(-2);
   const MM = String(d.getMonth() + 1).padStart(2, '0');
-  const seq = String(nextMonthlySeq()).padStart(4, '0');
+  const seq = String(await nextMonthlySeq()).padStart(4, '0');
   return `TF-${YY}${MM}-${seq}`;
 }
 
-function saveQuoteRecord(quoteNo, data) {
-  const map = loadAllQuotes();
-  map[quoteNo] = { ...data, quoteNo, updatedAt: new Date().toISOString() };
-  saveAllQuotes(map);
+async function saveQuoteRecord(quoteNo, data) {
+  const now = new Date().toISOString();
+  const record = { ...data, quoteNo, updatedAt: now };
+
+  if (hasSupabaseConfig()) {
+    await supabaseFetch(`/rest/v1/${SUPABASE_QUOTES_TABLE}?on_conflict=quote_no`, {
+      method: "POST",
+      body: JSON.stringify({
+        quote_no: quoteNo,
+        data: record,
+        updated_at: now,
+      }),
+      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+    });
+    return record;
+  }
+
+  const map = await loadAllQuotes();
+  map[quoteNo] = record;
+  await saveAllQuotes(map);
+  return record;
 }
 
-function getQuoteRecord(quoteNo) {
-  const map = loadAllQuotes();
+async function getQuoteRecord(quoteNo) {
+  if (hasSupabaseConfig()) {
+    const rows = await supabaseFetch(`/rest/v1/${SUPABASE_QUOTES_TABLE}?select=quote_no,data,created_at,updated_at&quote_no=eq.${encodeURIComponent(quoteNo)}&limit=1`);
+    return rowToQuoteRecord(rows?.[0]) || null;
+  }
+
+  const map = await loadAllQuotes();
   return map[quoteNo] || null;
+}
+
+async function deleteQuoteRecord(quoteNo) {
+  if (hasSupabaseConfig()) {
+    await supabaseFetch(`/rest/v1/${SUPABASE_QUOTES_TABLE}?quote_no=eq.${encodeURIComponent(quoteNo)}`, {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" },
+    });
+    return;
+  }
+
+  const map = await loadAllQuotes();
+  delete map[quoteNo];
+  await saveAllQuotes(map);
 }
 
 /* =========================
@@ -930,7 +1028,7 @@ export default function CurtainQuotationApp() {
   }, [settings]);
 
   const [rooms, setRooms] = useState(() => [BlankRoom(1, loadSettings())]);
-  const [quoteNo, setQuoteNo] = useState(() => generateQuoteNo());
+  const [quoteNo, setQuoteNo] = useState("");
 
   const [loadedBanner, setLoadedBanner] = useState("");
 
@@ -951,6 +1049,21 @@ export default function CurtainQuotationApp() {
     },
   });
 
+  useEffect(() => {
+    let cancelled = false;
+    async function initQuoteNo() {
+      try {
+        const newNo = await generateQuoteNo();
+        if (!cancelled) setQuoteNo(newNo);
+      } catch (err) {
+        console.error("Could not generate quote number", err);
+        if (!cancelled) setLoadedBanner("Could not connect to online database. Using draft mode.");
+      }
+    }
+    initQuoteNo();
+    return () => { cancelled = true; };
+  }, []);
+
   const [activeTab, setActiveTab] = useState('quote');
   const [historySearch, setHistorySearch] = useState("");
   const [allQuotes, setAllQuotes] = useState([]);
@@ -961,11 +1074,16 @@ export default function CurtainQuotationApp() {
   useEffect(() => { quoteNoRef.current = quoteNo; }, [quoteNo]);
   const printableRefMap = useStableRefMap();
 
-  const refreshQuoteList = useCallback(() => {
-    const map = loadAllQuotes();
-    const arr = Object.values(map || {});
-    arr.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
-    setAllQuotes(arr);
+  const refreshQuoteList = useCallback(async () => {
+    try {
+      const map = await loadAllQuotes();
+      const arr = Object.values(map || {});
+      arr.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+      setAllQuotes(arr);
+    } catch (err) {
+      console.error("Could not load saved quotes", err);
+      setLoadedBanner("Could not load saved quotes from the online database.");
+    }
   }, []);
 
   useEffect(() => { refreshQuoteList(); }, [refreshQuoteList]);
@@ -1012,27 +1130,32 @@ export default function CurtainQuotationApp() {
     setTimeout(() => setLoadedBanner(''), 4000);
   }, [settings]);
 
-  const handleSaveQuote = useCallback(() => {
-    const allTotals = computeAllTotals(rooms, quoteMeta.commercials, settings);
-    const finalNo = quoteNo || generateQuoteNo();
-    setQuoteNo(finalNo);
-    const payload = {
-      customer: { name: quoteMeta.customerName, phone: quoteMeta.customerPhone, project: quoteMeta.projectTitle },
-      company: quoteMeta.company,
-      commercials: quoteMeta.commercials,
-      rooms,
-      settingsSnapshot: settings,
-      snapshot: allTotals,
-      createdAt: new Date().toISOString(),
-    };
-    saveQuoteRecord(finalNo, payload);
-    refreshQuoteList();
-    setLoadedBanner(`Saved as ${finalNo}`);
-    setTimeout(() => setLoadedBanner(''), 3000);
+  const handleSaveQuote = useCallback(async () => {
+    try {
+      const allTotals = computeAllTotals(rooms, quoteMeta.commercials, settings);
+      const finalNo = quoteNo || await generateQuoteNo();
+      setQuoteNo(finalNo);
+      const payload = {
+        customer: { name: quoteMeta.customerName, phone: quoteMeta.customerPhone, project: quoteMeta.projectTitle },
+        company: quoteMeta.company,
+        commercials: quoteMeta.commercials,
+        rooms,
+        settingsSnapshot: settings,
+        snapshot: allTotals,
+        createdAt: new Date().toISOString(),
+      };
+      await saveQuoteRecord(finalNo, payload);
+      await refreshQuoteList();
+      setLoadedBanner(`Saved as ${finalNo}${hasSupabaseConfig() ? " online" : " on this browser"}`);
+      setTimeout(() => setLoadedBanner(''), 3000);
+    } catch (err) {
+      console.error("Could not save quote", err);
+      setLoadedBanner("Could not save quote. Check Supabase setup and environment variables.");
+    }
   }, [quoteNo, rooms, quoteMeta, settings, refreshQuoteList]);
 
-  const handleNewQuote = useCallback(() => {
-  const newNo = generateQuoteNo();
+  const handleNewQuote = useCallback(async () => {
+  const newNo = await generateQuoteNo();
 
   setQuoteNo(newNo);
   setRooms([BlankRoom(1, settings)]);
@@ -1077,13 +1200,19 @@ export default function CurtainQuotationApp() {
 }, [settings]);
 
 
-  const handleDeleteQuote = useCallback((no) => {
+  const handleDeleteQuote = useCallback(async (no) => {
     if (!window.confirm(`Delete quote ${no}?`)) return;
-    const map = loadAllQuotes();
-    delete map[no];
-    saveAllQuotes(map);
-    refreshQuoteList();
-    if (quoteNo === no) { setQuoteNo(''); setRooms([BlankRoom(1, settings)]); }
+    try {
+      await deleteQuoteRecord(no);
+      await refreshQuoteList();
+      if (quoteNo === no) {
+        setQuoteNo(await generateQuoteNo());
+        setRooms([BlankRoom(1, settings)]);
+      }
+    } catch (err) {
+      console.error("Could not delete quote", err);
+      setLoadedBanner("Could not delete quote from the online database.");
+    }
   }, [quoteNo, settings, refreshQuoteList]);
 
   /* ── Room helpers ── */
@@ -1508,12 +1637,12 @@ export default function CurtainQuotationApp() {
                 value={historySearch}
                 onChange={(e) => setHistorySearch(e.target.value)}
               />
-              <button className="btn btn-outline btn-sm" onClick={refreshQuoteList}>↻ Refresh</button>
+              <button className="btn btn-outline btn-sm" onClick={() => refreshQuoteList()}>↻ Refresh</button>
             </div>
 
             {filteredQuotes.length === 0 ? (
               <div className="empty-box">
-                {historySearch ? `No quotes matching "${historySearch}"` : 'No saved quotes yet. Create one in the Quote tab.'}
+                {historySearch ? `No quotes matching "${historySearch}"` : hasSupabaseConfig() ? 'No online quotes yet. Create one in the Quote tab.' : 'No saved quotes yet on this browser. Add Supabase env variables to share quotes online.'}
               </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
