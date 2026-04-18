@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+release/
+out/
+dist-electron/
+
+# Electron packaged apps
+*.dmg
+*.exe
+*.AppImage
+*.snap
+*.deb
+*.rpm
+*.asar
+*.app/
+
+# macOS
+.DS_Store
