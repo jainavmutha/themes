@@ -383,6 +383,301 @@ const GLOBAL_CSS = `
   .history-row-actions { display: flex; gap: 6px; }
   .loaded-banner { background: #d1fae5; border: 1px solid #6ee7b7; color: #065f46; border-radius: var(--radius-sm); padding: 10px 14px; font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
   .current-quote-badge { display: inline-flex; align-items: center; gap: 6px; background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 800; }
+
+  /* Responsive layout improvements */
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+}
+
+.app-container {
+  width: 100%;
+  max-width: 100vw;
+}
+
+.app-inner {
+  width: 100%;
+}
+
+.box,
+.hero-box,
+.tabs-box {
+  max-width: 100%;
+}
+
+.input,
+.select,
+.unit-input,
+.unit-input__field {
+  min-width: 0;
+  width: 100%;
+}
+
+.history-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.history-table {
+  min-width: 720px;
+}
+
+@media (min-width: 1200px) {
+  .app-inner {
+    max-width: 1120px;
+  }
+
+  .fabric-row-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .room-dims-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .app-container {
+    padding: 12px;
+  }
+
+  .app-inner {
+    gap: 12px;
+  }
+
+  .hero-box {
+    align-items: flex-start;
+  }
+
+  .hero-brand,
+  .hero-actions {
+    width: 100%;
+  }
+
+  .hero-actions {
+    justify-content: flex-start;
+  }
+
+  .fabric-row-grid,
+  .room-dims-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stat-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .commercial-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-container {
+    padding: 10px;
+  }
+
+  .box-body {
+    padding: 12px;
+  }
+
+  .box-header {
+    padding: 11px 12px;
+  }
+
+  .hero-box {
+    padding: 12px;
+  }
+
+  .hero-brand {
+    align-items: flex-start;
+  }
+
+  .hero-logo {
+    height: 36px;
+    max-width: 90px;
+    object-fit: contain;
+  }
+
+  .hero-title {
+    font-size: 16px;
+    line-height: 1.2;
+  }
+
+  .hero-subtitle {
+    font-size: 11px;
+  }
+
+  .hero-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .hero-actions .btn {
+    width: 100%;
+    justify-content: center;
+    padding: 8px 9px;
+    font-size: 12px;
+  }
+
+  .tabs-box {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tab {
+    min-width: 96px;
+    white-space: nowrap;
+    font-size: 12px;
+    padding: 10px 8px;
+  }
+
+  .grid-3,
+  .grid-2,
+  .fabric-row-grid,
+  .room-dims-grid,
+  .commercial-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .fabric-row {
+    padding: 10px;
+  }
+
+  .fabric-row-header {
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .fabric-row-header .input {
+    max-width: none !important;
+    width: 100%;
+    margin-left: 0 !important;
+    order: 3;
+  }
+
+  .fabric-cost-pill {
+    margin-left: 0;
+  }
+
+  .btn-remove-fabric {
+    margin-left: auto;
+  }
+
+  .room-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .room-title-input {
+    min-width: 180px;
+    flex: 1 1 70%;
+  }
+
+  .room-actions {
+    margin-left: auto;
+  }
+
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 0 10px 10px;
+  }
+
+  .room-footer {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .total-group {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .summary-item,
+  .final-row {
+    gap: 10px;
+  }
+
+  .summary-item {
+    align-items: flex-start;
+  }
+
+  .summary-total {
+    text-align: right;
+  }
+
+  .final-amount {
+    font-size: 20px;
+    text-align: right;
+  }
+
+  .history-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .history-search {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .history-row-actions {
+    flex-wrap: wrap;
+  }
+
+  .loaded-banner {
+    align-items: flex-start;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 420px) {
+  .app-container {
+    padding: 8px;
+  }
+
+  .hero-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .stat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pills {
+    width: 100%;
+  }
+
+  .pill {
+    font-size: 10px;
+  }
+
+  .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .room-actions .btn-icon {
+    width: auto;
+  }
+
+  .fabric-row-header {
+    gap: 6px;
+  }
+
+  .fabric-label-badge {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
 `;
 
 /* =========================
@@ -1738,25 +2033,27 @@ const handleDeleteMiscCost = useCallback((id) => {
               <div className="empty-box">{historySearch?`No quotes matching "${historySearch}"`:hasSupabaseConfig()?'No online quotes yet.':'No saved quotes yet on this browser.'}</div>
             ) : (
               <div style={{overflowX:'auto'}}>
-                <table className="history-table">
-                  <thead><tr><th>Quote No</th><th>Customer</th><th>Project</th><th>Rooms</th><th>Grand Total</th><th>Date</th><th>Actions</th></tr></thead>
-                  <tbody>
-                    {filteredQuotes.map(rec=>{
-                      const total=rec.snapshot?.summary?.finalTotal, date=rec.updatedAt?new Date(rec.updatedAt).toLocaleDateString('en-IN'):'—', roomCount=rec.rooms?.length||0, isActive=rec.quoteNo===quoteNo;
-                      return (
-                        <tr key={rec.quoteNo} style={isActive?{background:'#fff7ed'}:{}}>
-                          <td><span className="history-row-no">{rec.quoteNo}</span>{isActive&&<span style={{marginLeft:6,fontSize:10,background:'#fed7aa',color:'#9a3412',borderRadius:4,padding:'1px 5px',fontWeight:800}}>current</span>}</td>
-                          <td className="history-row-customer">{rec.customer?.name||<span style={{color:'var(--muted)'}}>—</span>}</td>
-                          <td style={{color:'var(--muted)',fontSize:12}}>{rec.customer?.project||'—'}</td>
-                          <td style={{textAlign:'center',fontWeight:700}}>{roomCount}</td>
-                          <td className="history-row-total">{total!=null?currency(total):'—'}</td>
-                          <td className="history-row-date">{date}</td>
-                          <td><div className="history-row-actions"><button className="btn btn-primary btn-sm" onClick={()=>loadQuoteRecord(rec)}>Load</button><button className="btn btn-danger btn-sm" onClick={()=>handleDeleteQuote(rec.quoteNo)}><Trash2 size={13} /></button></div></td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                <div className="history-table-wrap"></div>
+                  <table className="history-table">
+                    <thead><tr><th>Quote No</th><th>Customer</th><th>Project</th><th>Rooms</th><th>Grand Total</th><th>Date</th><th>Actions</th></tr></thead>
+                    <tbody>
+                      {filteredQuotes.map(rec=>{
+                        const total=rec.snapshot?.summary?.finalTotal, date=rec.updatedAt?new Date(rec.updatedAt).toLocaleDateString('en-IN'):'—', roomCount=rec.rooms?.length||0, isActive=rec.quoteNo===quoteNo;
+                        return (
+                          <tr key={rec.quoteNo} style={isActive?{background:'#fff7ed'}:{}}>
+                            <td><span className="history-row-no">{rec.quoteNo}</span>{isActive&&<span style={{marginLeft:6,fontSize:10,background:'#fed7aa',color:'#9a3412',borderRadius:4,padding:'1px 5px',fontWeight:800}}>current</span>}</td>
+                            <td className="history-row-customer">{rec.customer?.name||<span style={{color:'var(--muted)'}}>—</span>}</td>
+                            <td style={{color:'var(--muted)',fontSize:12}}>{rec.customer?.project||'—'}</td>
+                            <td style={{textAlign:'center',fontWeight:700}}>{roomCount}</td>
+                            <td className="history-row-total">{total!=null?currency(total):'—'}</td>
+                            <td className="history-row-date">{date}</td>
+                            <td><div className="history-row-actions"><button className="btn btn-primary btn-sm" onClick={()=>loadQuoteRecord(rec)}>Load</button><button className="btn btn-danger btn-sm" onClick={()=>handleDeleteQuote(rec.quoteNo)}><Trash2 size={13} /></button></div></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
             <div style={{marginTop:12,fontSize:12,color:'var(--muted)'}}>{filteredQuotes.length} quote{filteredQuotes.length!==1?'s':''}{historySearch?' found':' total'}</div>
