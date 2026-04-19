@@ -2033,7 +2033,7 @@ const handleDeleteMiscCost = useCallback((id) => {
               <div className="empty-box">{historySearch?`No quotes matching "${historySearch}"`:hasSupabaseConfig()?'No online quotes yet.':'No saved quotes yet on this browser.'}</div>
             ) : (
               <div style={{overflowX:'auto'}}>
-                <div className="history-table-wrap"></div>
+                <div className="history-table-wrap">
                   <table className="history-table">
                     <thead><tr><th>Quote No</th><th>Customer</th><th>Project</th><th>Rooms</th><th>Grand Total</th><th>Date</th><th>Actions</th></tr></thead>
                     <tbody>
