@@ -19,30 +19,42 @@ const DEFAULT_PAYMENT_QR_URL = import.meta.env.VITE_DEFAULT_PAYMENT_QR_URL || "h
 
 const DEFAULT_PAYMENT_UPI_ID = import.meta.env.VITE_DEFAULT_PAYMENT_UPI_ID || "";
 
+function stripUrlQuotes(url) {
+  return String(url || "").trim().replace(/^['"]|['"]$/g, "");
+}
+
+function getGoogleDriveFileId(url) {
+  const raw = stripUrlQuotes(url);
+  if (!raw) return "";
+
+  const fileMatch = raw.match(/drive\.google\.com\/file\/d\/([^/?#]+)/);
+  if (fileMatch?.[1]) return fileMatch[1];
+
+  const idMatch = raw.match(/[?&]id=([^&#]+)/);
+  if (raw.includes("drive.google.com") && idMatch?.[1]) return idMatch[1];
+
+  return "";
+}
+
 function normalizeImageUrl(url) {
-  if (!url) return "";
-  const raw = String(url).trim();
+  const raw = stripUrlQuotes(url);
+  if (!raw) return "";
 
-  const driveFileMatch = raw.match(/drive\.google\.com\/file\/d\/([^/]+)/);
-  if (driveFileMatch?.[1]) {
-    return `https://drive.google.com/thumbnail?id=${driveFileMatch[1]}&sz=w1000`;
-  }
-
-  const driveIdMatch = raw.match(/[?&]id=([^&]+)/);
-  if (raw.includes("drive.google.com") && driveIdMatch?.[1]) {
-    return `https://drive.google.com/thumbnail?id=${driveIdMatch[1]}&sz=w1000`;
+  const driveId = getGoogleDriveFileId(raw);
+  if (driveId) {
+    return `https://lh3.googleusercontent.com/d/${driveId}=w1000`;
   }
 
   return raw;
 }
 
 function googleDrivePdfUrl(url) {
-  if (!url) return "";
-  const raw = String(url).trim();
-  const driveFileMatch = raw.match(/drive\.google\.com\/file\/d\/([^/]+)/);
-  if (driveFileMatch?.[1]) return `https://drive.google.com/uc?export=download&id=${driveFileMatch[1]}`;
-  const driveIdMatch = raw.match(/[?&]id=([^&]+)/);
-  if (raw.includes("drive.google.com") && driveIdMatch?.[1]) return `https://drive.google.com/uc?export=download&id=${driveIdMatch[1]}`;
+  const raw = stripUrlQuotes(url);
+  if (!raw) return "";
+
+  const driveId = getGoogleDriveFileId(raw);
+  if (driveId) return `https://lh3.googleusercontent.com/d/${driveId}=w1000`;
+
   return raw;
 }
 
@@ -1655,7 +1667,19 @@ useEffect(() => {
         {/* Header */}
         <div className="hero-box">
           <div className="hero-brand">
-            {quoteMeta.company.logoUrl && <img src={normalizeImageUrl(quoteMeta.company.logoUrl)} alt="Logo" className="hero-logo" />}
+            {quoteMeta.company.logoUrl && (
+              <img
+                src={normalizeImageUrl(quoteMeta.company.logoUrl)}
+                alt="Logo"
+                className="hero-logo"
+                onError={(e) => {
+                  const originalUrl = stripUrlQuotes(quoteMeta.company.logoUrl);
+                  const driveId = getGoogleDriveFileId(originalUrl);
+                  const fallbackUrl = driveId ? `https://drive.google.com/thumbnail?id=${driveId}&sz=w1000` : originalUrl;
+                  if (e.currentTarget.src !== fallbackUrl) e.currentTarget.src = fallbackUrl;
+                }}
+              />
+            )}
             <div>
               <h1 className="hero-title">Curtain Quotation</h1>
               <p className="hero-subtitle">Themes Furnishings & Decor</p>
