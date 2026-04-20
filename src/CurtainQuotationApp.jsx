@@ -201,7 +201,12 @@ const BlankFabric = (settings = DEFAULT_SETTINGS, label = "Main", overrides = {}
   materialName: "",
   materialPrice: "",
   clothMeters: "",
-  stitching: settings.stitchingTypes[0],
+  isRomanBlind: false,
+romanBlindSqFt: "",
+isWallpaper: false,
+wallpaperRollQty: "",
+wallpaperRollPrice: "",
+stitching: settings.stitchingTypes[0],
   lining: settings.linings[0],
   track: (settings.tracks && settings.tracks[0]) || {
     id: "std",
@@ -1066,10 +1071,11 @@ function computeClothMeters(room, fabric = {}) {
   const widthIn = toInches(widthVal, fabric.widthUnit || room.widthUnit || 'in');
   const lengthIn = toInches(lengthVal, fabric.lengthUnit || room.lengthUnit || 'in');
 
-  const allowanceIn = room.isRomanBlind ? 10 : 12;
-  const allowanceRep = room.isRomanBlind ? 10 : 8;
+  const isRomanBlind = Boolean(fabric.isRomanBlind || room.isRomanBlind);
+  const allowanceIn = isRomanBlind ? 10 : 12;
+  const allowanceRep = isRomanBlind ? 10 : 8;
 
-  const computedPanels = (widthIn || 0) / 20;
+  const computedPanels = isRomanBlind ? ((widthIn || 0) / 50) : ((widthIn || 0) / 20);
   const panels = toNum(fabric.panels) ? toNum(fabric.panels) : computedPanels;
 
   let adjLen = lengthIn + allowanceIn;
@@ -1093,7 +1099,9 @@ function computeClothMeters(room, fabric = {}) {
     }
   }
 
-  const autoMeters = Math.ceil((adjLen * panels / 39) * 2) / 2;
+  const autoMeters = isRomanBlind
+    ? ((adjLen * panels) / 39)
+    : Math.ceil((adjLen * panels / 39) * 2) / 2;
 
   let metersOfCloth = autoMeters;
   const override = toNum(fabric.clothMeters);
@@ -1105,18 +1113,69 @@ function computeClothMeters(room, fabric = {}) {
     panels,
     metersOfCloth,
     trackFeet: Math.max(1, ceilDiv(widthIn || 0, 12)),
+    widthFeet: (widthIn || 0) / 12,
   };
+}
+
+// Compute fabric area in square feet (used for Roman Blinds)
+function computeFabricSquareFeet(room, fabric = {}) {
+  const manualSqFt = toNum(fabric.romanBlindSqFt);
+  if (manualSqFt > 0 && Number.isFinite(manualSqFt)) return manualSqFt;
+
+  const widthVal = toNum(fabric.widthInch ?? room.widthInch);
+  const lengthVal = toNum(fabric.lengthInch ?? room.lengthInch);
+
+  const toInches = (val, unit) => {
+    switch (unit || 'in') {
+      case 'ft': return val * 12;
+      case 'm': return val * 39.3701;
+      case 'cm': return val / 2.54;
+      default: return val;
+    }
+  };
+
+  const widthIn = toInches(widthVal, fabric.widthUnit || room.widthUnit || 'in');
+  const lengthIn = toInches(lengthVal, fabric.lengthUnit || room.lengthUnit || 'in');
+
+  if (!widthIn || !lengthIn) return 0;
+  return (widthIn * lengthIn) / 144;
 }
 
 /**
  * Compute costs for a single fabric entry within a room.
  */
 function computeFabricCost(room, fabric) {
-  const { panels, metersOfCloth, trackFeet } = computeClothMeters(room, fabric);
+  const { panels, metersOfCloth, trackFeet, widthFeet } = computeClothMeters(room, fabric);
+  if (fabric.isWallpaper) {
+  const rollQty = toNum(fabric.wallpaperRollQty);
+  const rollPrice = toNum(fabric.wallpaperRollPrice);
+  const clothCost = rollQty * rollPrice;
+
+  return {
+    panels: 0,
+    metersOfCloth: 0,
+    trackFeet: 0,
+    widthFeet: 0,
+    clothCost,
+    stitchingCost: 0,
+    liningCost: 0,
+    romanBlindSqFt: 0,
+    isRomanBlind: false,
+    isWallpaper: true,
+    rollQty,
+    rollPrice,
+    stitchingRate: 0,
+  };
+}
   const clothCost = metersOfCloth * toNum(fabric.materialPrice);
-  const stitchingCost = panels * (fabric.stitching?.ratePerPanel || 0);
+  const isRomanBlind = Boolean(fabric.isRomanBlind || room.isRomanBlind);
+  const romanBlindSqFt = isRomanBlind ? computeFabricSquareFeet(room, fabric) : 0;
+  const stitchingRate = fabric.stitching?.ratePerPanel || 0;
+  const stitchingCost = isRomanBlind
+    ? romanBlindSqFt * stitchingRate
+    : panels * stitchingRate;
   const liningCost = metersOfCloth * (fabric.lining?.ratePerMeter || 0);
-  return { panels, metersOfCloth, trackFeet, clothCost, stitchingCost, liningCost };
+  return { panels, metersOfCloth, trackFeet, widthFeet, clothCost, stitchingCost, liningCost, romanBlindSqFt, isRomanBlind, stitchingRate };
 }
 
 /**
@@ -1150,7 +1209,11 @@ function computeRoomCost(room, settings) {
       ? selectedTrackRate
       : (settings?.trackRatePerFt || 0);
 
-    const fabricTrackCost = room.needInstallation ? fc.trackFeet * trackRate : 0;
+    const fabricTrackCost = fc.isWallpaper
+  ? 0
+  : (fc.isRomanBlind
+    ? (fc.widthFeet || 0) * trackRate
+    : (room.needInstallation ? fc.trackFeet * trackRate : 0));
 
     totalClothCost += fc.clothCost;
     totalStitchingCost += fc.stitchingCost;
@@ -1338,7 +1401,7 @@ function buildFabricSummaryRows(rooms, settings) {
   return Array.from(map.values()).map(r => ({ ...r, qtyMeters: Math.round(r.qtyMeters*100)/100, amount: Math.round(r.amount), roomNames: Array.from(new Set(r.roomNames)) }));
 }
 
-function drawGroupedSummarySection(doc, m, y, rooms, settings, commercials, miscellaneousCosts = []) {
+function drawGroupedSummarySection(doc, m, y, rooms, settings, commercials, miscellaneousCosts = [], mergeFabricsRoomWise = false) {
   const pw = doc.internal.pageSize.getWidth(), ph = doc.internal.pageSize.getHeight(), tw = pw-2*m;
   const ensureSpace = (h) => { if ((y+h) > (ph-24)) { doc.addPage(); y=m; } return y; };
   const rightText = (text, x, lineY) => { const s=String(text??''); doc.text(s, x-doc.getTextWidth(s), lineY); };
@@ -1358,11 +1421,11 @@ function drawGroupedSummarySection(doc, m, y, rooms, settings, commercials, misc
 
   const otherRows = [];
   // stitching (per fabric)
-  { const smap=new Map(); roomCosts.forEach(({room,cost})=>{cost.fabricBreakdowns.forEach(fb=>{const k=fb.stitching?.id||'none';if(!smap.has(k))smap.set(k,{label:`Stitching - ${fb.stitching?.label||'N/A'}`,qty:0,qtyUnit:'panels',rate:fb.stitching?.ratePerPanel||0,amount:0});const row=smap.get(k);row.qty+=fb.panels;row.amount+=fb.stitchingCost;});}); smap.forEach(r=>{if(Math.round(r.amount)>0)otherRows.push(r);}); }
+  { const smap=new Map(); roomCosts.forEach(({room,cost})=>{cost.fabricBreakdowns.forEach(fb=>{const isBlind=Boolean(fb.isRomanBlind||fb.romanBlindSqFt);const k=isBlind?`roman_blind_${fb.stitching?.id||'none'}`:(fb.stitching?.id||'none');if(!smap.has(k))smap.set(k,{label:isBlind?`Roman Blind - ${fb.stitching?.label||'Stitching'}`:`Stitching - ${fb.stitching?.label||'N/A'}`,qty:0,qtyUnit:isBlind?'sqft':'panels',rate:fb.stitching?.ratePerPanel||0,amount:0});const row=smap.get(k);row.qty+=isBlind?(fb.romanBlindSqFt||0):fb.panels;row.amount+=fb.stitchingCost;});}); smap.forEach(r=>{if(Math.round(r.amount)>0)otherRows.push(r);}); }
   // lining
   { const lmap=new Map(); roomCosts.forEach(({room,cost})=>{cost.fabricBreakdowns.forEach(fb=>{const k=fb.lining?.id||'none';if(!lmap.has(k))lmap.set(k,{label:`Lining - ${fb.lining?.label||'N/A'}`,qty:0,qtyUnit:'m',rate:fb.lining?.ratePerMeter||0,amount:0});const row=lmap.get(k);row.qty+=fb.metersOfCloth;row.amount+=fb.liningCost;});}); lmap.forEach(r=>{if(Math.round(r.amount)>0)otherRows.push(r);}); }
   // track
-  { const tmap=new Map(); roomCosts.forEach(({room,cost})=>{const k=room.track?.id||'none';if(!tmap.has(k))tmap.set(k,{label:`Track - ${room.track?.label||'N/A'}`,qty:0,qtyUnit:'ft',rate:Number.isFinite(room.track?.ratePerFt)?room.track.ratePerFt:(settings?.trackRatePerFt||0),amount:0});const row=tmap.get(k);row.qty+=cost.trackFeet;row.amount+=cost.trackCost;}); tmap.forEach(r=>{if(Math.round(r.amount)>0)otherRows.push(r);}); }
+  { const tmap=new Map(); roomCosts.forEach(({room,cost})=>{cost.fabricBreakdowns.forEach(fb=>{if(Math.round(fb.trackCost||0)<=0)return;const isBlind=Boolean(fb.isRomanBlind||fb.romanBlindSqFt);const k=isBlind?`roman_track_${fb.track?.id||'none'}`:(fb.track?.id||room.track?.id||'none');const rate=Number.isFinite(fb.track?.ratePerFt)?fb.track.ratePerFt:(Number.isFinite(room.track?.ratePerFt)?room.track.ratePerFt:(settings?.trackRatePerFt||0));if(!tmap.has(k))tmap.set(k,{label:isBlind?`Roman Track - ${fb.track?.label||'N/A'}`:`Track - ${fb.track?.label||room.track?.label||'N/A'}`,qty:0,qtyUnit:'ft',rate,amount:0});const row=tmap.get(k);row.qty+=isBlind?(fb.widthFeet||0):(fb.trackFeet||0);row.amount+=fb.trackCost;});}); tmap.forEach(r=>{if(Math.round(r.amount)>0)otherRows.push(r);}); }
   // installation
     // installation
   { const ti=Math.round(roomCosts.reduce((s,x)=>s+x.cost.installationCost,0)), tq=roomCosts.reduce((s,x)=>s+(x.cost.usedInstallQty||0),0); if(ti>0)otherRows.push({label:'Installation',qty:tq,qtyUnit:'pcs',rate:settings?.installationRatePerTrackFt||0,amount:ti}); }
@@ -1419,18 +1482,94 @@ function drawGroupedSummarySection(doc, m, y, rooms, settings, commercials, misc
   const roomFabricColDefs = [
     { title: 'Room',        x: colRoomX2,  w: colRoomW2,  align: 'left'  },
     { title: 'Fabric',      x: colFabricX, w: colFabricW, align: 'left'  },
-    { title: 'Cloth (m)',   x: colClothX,  w: colClothW,  align: 'right' },
-    { title: 'Rate/m',      x: colRateX2,  w: colRateW,   align: 'right' },
+    { title: 'Qty',         x: colClothX,  w: colClothW,  align: 'right' },
+    { title: 'Rate',        x: colRateX2,  w: colRateW,   align: 'right' },
     { title: 'Amount',      x: colAmountX2,w: colAmountW, align: 'right' },
   ];
 
-  // Estimate height
-  const totalFabricEntries = effectiveRooms.reduce((s, r) => s + Math.max(1, (r.fabrics||[]).length), 0);
+    // Estimate height
+  const totalFabricEntries = mergeFabricsRoomWise
+    ? effectiveRooms.length
+    : effectiveRooms.reduce((s, r) => s + Math.max(1, (r.fabrics||[]).length), 0);
+
   y = ensureSpace(headerH + totalFabricEntries * baseRowH + 60);
   y = drawTableHeader(y, roomFabricColDefs);
 
   let globalRowIdx = 0;
-  effectiveRooms.forEach((room) => {
+
+  if (mergeFabricsRoomWise) {
+    effectiveRooms.forEach((room) => {
+      const fabrics = room.fabrics && room.fabrics.length ? room.fabrics : [];
+
+      if (!fabrics.length) {
+        const rowH = drawDataRow(
+          y,
+          globalRowIdx++,
+          [room.name || 'Room', '—', '—', '—', '—'],
+          roomFabricColDefs
+        );
+        y += rowH;
+        return;
+      }
+
+      const fabricCosts = fabrics.map((fab) => ({
+        fab,
+        fc: computeFabricCost(room, fab),
+      }));
+
+      const fabricLabel = fabricCosts
+        .map(({ fab }) => fab.label || 'Fabric')
+        .join(' + ');
+
+      const totalMeters = fabricCosts.reduce((sum, item) => {
+        return sum + Number(item.fc.metersOfCloth || 0);
+      }, 0);
+
+      const totalRolls = fabricCosts.reduce((sum, item) => {
+        return sum + Number(item.fc.rollQty || 0);
+      }, 0);
+
+      const totalAmount = fabricCosts.reduce((sum, item) => {
+        return sum + Number(item.fc.clothCost || 0);
+      }, 0);
+
+      const hasWallpaper = fabricCosts.some(({ fab, fc }) => fab.isWallpaper || fc.isWallpaper);
+      const hasFabricMeters = totalMeters > 0;
+      const qtyText = hasWallpaper && !hasFabricMeters
+        ? `${totalRolls.toFixed(2)} rolls`
+        : (hasWallpaper && hasFabricMeters
+          ? `${totalMeters.toFixed(2)} m + ${totalRolls.toFixed(2)} rolls`
+          : `${totalMeters.toFixed(2)} m`);
+
+      const rates = Array.from(
+        new Set(
+          fabricCosts
+            .map(({ fab, fc }) => Number((fab.isWallpaper || fc.isWallpaper) ? fc.rollPrice : fab.materialPrice || 0))
+            .filter(rate => rate > 0)
+        )
+      );
+
+      const rateText = rates.length === 1
+        ? `Rs.${numberWithCommas(rates[0])}`
+        : 'Mixed';
+
+      const rowH = drawDataRow(
+        y,
+        globalRowIdx++,
+        [
+          room.name || 'Room',
+          fabricLabel || 'Fabric',
+          qtyText,
+          rateText,
+          `Rs.${numberWithCommas(Math.round(totalAmount))}`,
+        ],
+        roomFabricColDefs
+      );
+
+      y += rowH;
+    });
+  } else {
+    effectiveRooms.forEach((room) => {
     const fabrics = room.fabrics && room.fabrics.length ? room.fabrics : [];
     if (!fabrics.length) {
       const rowH = drawDataRow(y, globalRowIdx++, [room.name||'Room', '—', '—', '—', '—'], roomFabricColDefs);
@@ -1470,8 +1609,17 @@ function drawGroupedSummarySection(doc, m, y, rooms, settings, commercials, misc
       wrapText(nameText, colFabricW-16).forEach((l,li)=>pdfText(doc,l,colFabricX+8,ry+lineH+li*lineH));
 
       // cloth qty, rate, amount
-      rightText(`${fc.metersOfCloth.toFixed(2)} m`, colClothX+colClothW-8, ry+lineH);
-      rightText(`Rs.${numberWithCommas(fab.materialPrice||0)}`, colRateX2+colRateW-8, ry+lineH);
+      rightText(
+        fab.isWallpaper ? `${Number(fc.rollQty || 0).toFixed(2)} rolls` : `${fc.metersOfCloth.toFixed(2)} m`,
+        colClothX+colClothW-8,
+        ry+lineH
+      );
+
+      rightText(
+        fab.isWallpaper ? `Rs.${numberWithCommas(fc.rollPrice || 0)}` : `Rs.${numberWithCommas(fab.materialPrice||0)}`,
+        colRateX2+colRateW-8,
+        ry+lineH
+      );
       rightText(`Rs.${numberWithCommas(Math.round(fc.clothCost))}`, colAmountX2+colAmountW-8, ry+lineH);
     });
 
@@ -1492,9 +1640,12 @@ function drawGroupedSummarySection(doc, m, y, rooms, settings, commercials, misc
       pdfText(doc, l, colRoomX2 + colRoomW2 / 2, roomTextStartY + li * lineH, { align: 'center' });
     });
 
-    y += totalRoomH;
+        y += totalRoomH;
     globalRowIdx++;
-  });
+    });
+  }
+
+  // Fabric subtotal
 
   // Fabric subtotal
   { const rowH=baseRowH; doc.setFillColor(...pdfColor('#FFF7ED')); doc.rect(m,y,tw,rowH,'F'); doc.setDrawColor(...pdfColor(BRAND.grid)); doc.rect(m,y,tw,rowH,'S'); doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(30,30,30); pdfText(doc,'Fabric Sub-Total',m+8,y+14); rightText(`Rs.${numberWithCommas(fabricTotal)}`,m+tw-8,y+14); y+=rowH; }
@@ -1514,7 +1665,7 @@ function drawGroupedSummarySection(doc, m, y, rooms, settings, commercials, misc
     const rowH=baseRowH; doc.setFillColor(255,255,255); doc.rect(m,y,tw,rowH,'F'); doc.setDrawColor(...pdfColor(BRAND.grid)); doc.rect(m,y,tw,rowH,'S'); doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(80,80,80); pdfText(doc,'No additional costs',m+8,y+14); y+=rowH;
   } else {
     otherRows.forEach((row,idx)=>{
-      const qtyText=row.qtyUnit==='m'?`${row.qty.toFixed(2)} m`:row.qtyUnit==='panels'?`${Math.round(row.qty)} panels`:row.qtyUnit==='ft'?`${Math.round(row.qty)} ft`:`${Math.round(row.qty)} pcs`;
+      const qtyText=row.qtyUnit==='m'?`${row.qty.toFixed(2)} m`:row.qtyUnit==='panels'?`${Math.round(row.qty)} panels`:row.qtyUnit==='sqft'?`${Number(row.qty).toFixed(2)} sq ft`:row.qtyUnit==='ft'?`${Math.round(row.qty)} ft`:`${Math.round(row.qty)} pcs`;
       const rowH=drawDataRow(y,idx,[row.label,qtyText,`Rs.${numberWithCommas(row.rate)}`,`Rs.${numberWithCommas(Math.round(row.amount))}`],otherColDefs);
       y+=rowH;
     });
@@ -1579,7 +1730,7 @@ function estimateFullPdfHeight(rooms, meta, settings, miscellaneousCosts = []) {
   ));
 }
 
-async function generateFullPDF(rooms, meta, settings, miscellaneousCosts = []) {
+async function generateFullPDF(rooms, meta, settings, miscellaneousCosts = [], mergeFabricsRoomWise = false) {
   const logoDataURL = await imageToDataURL(meta.company.logoUrl);
   const paymentQrDataURL = await imageToDataURL(meta.company.paymentQrUrl);
   const sigDataURL = await imageToDataURL(meta.commercials.signatureUrl);
@@ -1598,7 +1749,7 @@ async function generateFullPDF(rooms, meta, settings, miscellaneousCosts = []) {
   y = drawSectionHeader(doc, m, y, meta.quoteNo ? `QUOTATION - ${meta.quoteNo}` : 'QUOTATION');
 
   const all = computeAllTotals(rooms, meta.commercials, settings, miscellaneousCosts);
-  y = drawGroupedSummarySection(doc, m, y, rooms, settings, meta.commercials, miscellaneousCosts);
+  y = drawGroupedSummarySection(doc, m, y, rooms, settings, meta.commercials, miscellaneousCosts, mergeFabricsRoomWise);
 
   drawFinalSummaryPanel(doc, m, y, meta, all.summary, sigDataURL);
   return doc;
@@ -1637,6 +1788,34 @@ const FabricRow = React.memo(function FabricRow({ fabric, room, settings, onChan
           style={{ flex: 1, marginLeft: 8, maxWidth: 180 }}
         />
 
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 800, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+  <input
+    type="checkbox"
+    checked={!!fabric.isRomanBlind}
+    disabled={!!fabric.isWallpaper}
+    onChange={e => onChange({
+      isRomanBlind: e.target.checked,
+      romanBlindSqFt: e.target.checked ? fabric.romanBlindSqFt : "",
+    })}
+  />
+  Roman Blind
+</label>
+
+<label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 800, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+  <input
+    type="checkbox"
+    checked={!!fabric.isWallpaper}
+    onChange={e => onChange({
+      isWallpaper: e.target.checked,
+      isRomanBlind: false,
+      romanBlindSqFt: "",
+      panels: e.target.checked ? "" : fabric.panels,
+      clothMeters: e.target.checked ? "" : fabric.clothMeters,
+    })}
+  />
+  Wallpaper
+</label>
+
         <span className="fabric-cost-pill">
           {currency(fc.clothCost + fc.stitchingCost + fc.liningCost)}
         </span>
@@ -1649,6 +1828,40 @@ const FabricRow = React.memo(function FabricRow({ fabric, room, settings, onChan
       </div>
 
       <div className="fabric-row-grid">
+        {fabric.isWallpaper ? (
+  <>
+    <Field label="Wallpaper Name">
+      <input
+        className="input"
+        value={fabric.materialName || ""}
+        onChange={e => onChange({ materialName: e.target.value })}
+        placeholder="e.g. Floral Wallpaper"
+      />
+    </Field>
+
+    <Field label="Quantity" hint="rolls">
+      <UnitInput
+        unit="rolls"
+        value={fabric.wallpaperRollQty ?? ""}
+        onChange={e => onChange({ wallpaperRollQty: e.target.value })}
+        inputMode="decimal"
+        placeholder="e.g. 3"
+      />
+    </Field>
+
+    <Field label="Price / Roll">
+      <UnitInput
+        unit="Rs"
+        value={fabric.wallpaperRollPrice ?? ""}
+        onChange={e => onChange({ wallpaperRollPrice: e.target.value })}
+        inputMode="decimal"
+        placeholder="e.g. 2500"
+      />
+    </Field>
+  </>
+) : (
+  <>
+
         <Field label="Length" hint="value + unit">
           <div style={{ display: 'flex', gap: 8 }}>
             <UnitInput
@@ -1695,15 +1908,27 @@ const FabricRow = React.memo(function FabricRow({ fabric, room, settings, onChan
           </div>
         </Field>
 
-        <Field label="Panels" hint="auto-calculated">
+        <Field label="Panels" hint={fabric.isRomanBlind || room.isRomanBlind ? "auto: width ÷ 50, editable" : "auto: width ÷ 20, editable"}>
           <UnitInput
             unit="pcs"
             value={fabric.panels ?? ""}
             onChange={e => onChange({ panels: e.target.value })}
             inputMode="decimal"
-            placeholder={Number(fc.panels).toFixed(2)}
+            placeholder={Number(fc.panels || 0).toFixed(2)}
           />
         </Field>
+
+        {(fabric.isRomanBlind || room.isRomanBlind) && (
+          <Field label="Sq Ft" hint="auto from length × width, editable">
+            <UnitInput
+              unit="sq ft"
+              value={fabric.romanBlindSqFt ?? ""}
+              onChange={e => onChange({ romanBlindSqFt: e.target.value })}
+              inputMode="decimal"
+              placeholder={Number(fc.romanBlindSqFt || 0).toFixed(2)}
+            />
+          </Field>
+        )}
 
         <Field label="Repeat">
           <select
@@ -1807,6 +2032,8 @@ const FabricRow = React.memo(function FabricRow({ fabric, room, settings, onChan
             ))}
           </select>
         </Field>
+        </>
+)}
       </div>
     </div>
   );
@@ -1892,9 +2119,7 @@ const RoomCard = React.memo(function RoomCard({ room, onClone, onDelete, updateR
       <div className="room-header">
         <input type="checkbox" checked={localRoom.include !== false} onChange={e => handleSelectChange({ include: e.target.checked })} style={{ transform: 'scale(1.2)', flexShrink: 0 }} />
         <input value={localRoom.name || ''} onChange={e => handleChange('name', e.target.value)} onBlur={syncToParent} onFocus={e => e.currentTarget.select()} className="room-title-input" placeholder="Room Name" />
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginRight: 8, whiteSpace: 'nowrap' }}>
-          <input type="checkbox" checked={!!localRoom.isRomanBlind} onChange={e => handleSelectChange({ isRomanBlind: e.target.checked })} /> Roman Blind
-        </label>
+        
         <div className="room-actions">
           <button className="btn-icon" onClick={() => onClone(room.id)} title="Duplicate"><Copy size={15} /></button>
           <button className="btn-icon text-danger" onClick={() => onDelete(room.id)} title="Delete"><Trash2 size={15} /></button>
@@ -1959,7 +2184,7 @@ const RoomCard = React.memo(function RoomCard({ room, onClone, onDelete, updateR
       {/* Stats */}
       <div className="stat-grid">
         <div className="stat"><div className="stat-label">Cloth</div><div className="stat-value">{currency(cost.clothCost)}</div></div>
-        <div className="stat"><div className="stat-label">Stitch</div><div className="stat-value">{currency(cost.stitchingCost)}</div></div>
+        <div className="stat"><div className="stat-label">{(cost.fabricBreakdowns || []).some(f => f.isRomanBlind) ? 'Blind Stitch' : 'Stitch'}</div><div className="stat-value">{currency(cost.stitchingCost)}</div></div>
         <div className="stat"><div className="stat-label">Lining</div><div className="stat-value">{currency(cost.liningCost)}</div></div>
         <div className="stat"><div className="stat-label">Track</div><div className="stat-value">{currency(cost.trackCost)}</div></div>
         <div className="stat"><div className="stat-label">Install</div><div className="stat-value">{currency(cost.installationCost)}</div></div>
@@ -1967,7 +2192,11 @@ const RoomCard = React.memo(function RoomCard({ room, onClone, onDelete, updateR
 
       <div className="room-footer">
         <div className="pills">
-          <Pill>{Number(cost.panels).toFixed(2)} panels</Pill>
+          <Pill>
+            {(cost.fabricBreakdowns || []).some(f => f.isRomanBlind)
+  ? `${Number((cost.fabricBreakdowns || []).reduce((s, f) => s + Number(f.romanBlindSqFt || 0), 0)).toFixed(2)} sq ft`
+  : `${Number(cost.panels).toFixed(2)} panels`}
+          </Pill>
           <Pill>{cost.totalMeters.toFixed(1)} m total</Pill>
           <Pill>{cost.trackFeet} ft</Pill>
           <Pill>{(localRoom.fabrics||[]).length} fabric{(localRoom.fabrics||[]).length !== 1 ? 's' : ''}</Pill>
@@ -2206,7 +2435,17 @@ const handleDeleteMiscCost = useCallback((id) => {
             {activeTab === 'quote' && <>
               <button onClick={handleNewQuote} className="btn btn-outline btn-sm"><Plus size={15} /> New Quote</button>
               <button onClick={addRoom} className="btn btn-primary btn-sm"><Plus size={15} /> Room</button>
-              <button onClick={async()=>{try{const meta={...quoteMeta,quoteNo};const doc=await generateFullPDF(rooms,meta,settings,miscellaneousCosts);doc.save(`Quote_${quoteMeta.customerName||"Customer"}_${quoteNo||"Draft"}.pdf`);}catch(err){console.error(err);setLoadedBanner("Could not download PDF.");}}} className="btn btn-outline btn-sm"><Download size={15} /> Full PDF</button>
+              <button onClick={async()=>{try{const meta={...quoteMeta,quoteNo};const mergeFabricsRoomWise = window.confirm(
+  "Do you want to merge all fabrics room-wise in the PDF?\n\nOK = Show Main + Sheer in one room row\nCancel = Show each fabric separately"
+);
+
+const doc=await generateFullPDF(
+  rooms,
+  meta,
+  settings,
+  miscellaneousCosts,
+  mergeFabricsRoomWise
+);doc.save(`Quote_${quoteMeta.customerName||"Customer"}_${quoteNo||"Draft"}.pdf`);}catch(err){console.error(err);setLoadedBanner("Could not download PDF.");}}} className="btn btn-outline btn-sm"><Download size={15} /> Full PDF</button>
               <button onClick={handleSaveQuote} className="btn btn-primary btn-sm">Save</button>
             </>}
             {activeTab === 'history' && <button onClick={handleNewQuote} className="btn btn-primary btn-sm"><Plus size={15} /> New Quote</button>}
@@ -2353,7 +2592,17 @@ const handleDeleteMiscCost = useCallback((id) => {
               <div className="save-bottom-bar">
                 <span className="save-bottom-label">{quoteNo ? `Quote: ${quoteNo}` : 'Not yet saved'}</span>
                 <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                  <button onClick={async()=>{const meta={...quoteMeta,quoteNo};const doc=await generateFullPDF(rooms,meta,settings,miscellaneousCosts);doc.save(`Quote_${quoteMeta.customerName||"Customer"}_${quoteNo||"Draft"}.pdf`);}} className="btn btn-outline btn-sm"><Download size={14} /> Download PDF</button>
+                  <button onClick={async()=>{const meta={...quoteMeta,quoteNo};const mergeFabricsRoomWise = window.confirm(
+  "Do you want to merge all fabrics room-wise in the PDF?\n\nOK = Show Main + Sheer in one room row\nCancel = Show each fabric separately"
+);
+
+const doc=await generateFullPDF(
+  rooms,
+  meta,
+  settings,
+  miscellaneousCosts,
+  mergeFabricsRoomWise
+);doc.save(`Quote_${quoteMeta.customerName||"Customer"}_${quoteNo||"Draft"}.pdf`);}} className="btn btn-outline btn-sm"><Download size={14} /> Download PDF</button>
                   <button onClick={handleSaveQuote} className="btn btn-primary">Save Quote</button>
                 </div>
               </div>
