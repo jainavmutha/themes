@@ -1342,10 +1342,24 @@ function computeRoomCost(room, settings) {
 
 function computeFinalTotals(grandTotal, commercials, clothCost) {
   const { discountType, discountValue, gstRate, applyGst } = commercials;
-  const discountAmount = discountType === "percent" ? clothCost * (discountValue / 100) : (discountValue || 0);
+  const roundOff = toNum(commercials?.roundOff);
+
+  const discountAmount = discountType === "percent"
+    ? clothCost * (discountValue / 100)
+    : (discountValue || 0);
+
   const afterDiscount = Math.max(0, grandTotal - discountAmount);
   const gstAmount = applyGst ? afterDiscount * ((gstRate || 0) / 100) : 0;
-  return { base: Math.round(grandTotal), discountAmount: Math.round(discountAmount), afterDiscount: Math.round(afterDiscount), gstAmount: Math.round(gstAmount), finalTotal: Math.round(afterDiscount + gstAmount) };
+  const beforeRoundOff = afterDiscount + gstAmount;
+
+  return {
+    base: Math.round(grandTotal),
+    discountAmount: Math.round(discountAmount),
+    afterDiscount: Math.round(afterDiscount),
+    gstAmount: Math.round(gstAmount),
+    roundOff: Math.round(roundOff),
+    finalTotal: Math.round(beforeRoundOff + roundOff),
+  };
 }
 
 function computeAllTotals(rooms, commercials, settings, miscellaneousCosts = []) {
@@ -1363,10 +1377,11 @@ function computeAllTotals(rooms, commercials, settings, miscellaneousCosts = [])
   }, 0);
   const otherTotal = stitchingTotal + liningTotal + trackTotal + installTotal + miscTotal;
   const { discountType, discountValue, gstRate, applyGst } = commercials;
-  const discountAmount = discountType === "percent" ? clothTotal * (discountValue / 100) : (discountValue || 0);
-  const netFabricTotal = Math.max(0, clothTotal - discountAmount);
-  const afterDiscount = netFabricTotal + otherTotal;
-  const gstAmount = applyGst ? afterDiscount * ((gstRate || 0) / 100) : 0;
+  const roundOff = toNum(commercials?.roundOff);
+const discountAmount = discountType === "percent" ? clothTotal * (discountValue / 100) : (discountValue || 0);
+const netFabricTotal = Math.max(0, clothTotal - discountAmount);
+const afterDiscount = netFabricTotal + otherTotal;
+const gstAmount = applyGst ? afterDiscount * ((gstRate || 0) / 100) : 0;
 
   return {
     roomTotals,
@@ -1383,7 +1398,8 @@ function computeAllTotals(rooms, commercials, settings, miscellaneousCosts = [])
       netFabricTotal: Math.round(netFabricTotal),
       afterDiscount: Math.round(afterDiscount),
       gstAmount: Math.round(gstAmount),
-      finalTotal: Math.round(afterDiscount + gstAmount),
+roundOff: Math.round(roundOff),
+finalTotal: Math.round(afterDiscount + gstAmount + roundOff),
     }
   };
 }
@@ -1749,6 +1765,16 @@ function drawFinalSummaryPanel(doc, m, y, meta, summary, sigDataURL) {
     {label:'Other Costs',value:`Rs.${numberWithCommas(summary.otherTotal)}`,bold:false,grandTotal:false},
   ];
   if(meta.commercials.applyGst&&summary.gstAmount>0) lines.push({label:`GST (${meta.commercials.gstRate||0}%)`,value:`Rs.${numberWithCommas(summary.gstAmount)}`,bold:false,grandTotal:false});
+  if (Number(summary.roundOff || 0) !== 0) {
+  const roundOffValue = Number(summary.roundOff || 0);
+
+  lines.push({
+    label: roundOffValue > 0 ? "Round Off / Adjustment" : "Round Off / Adjustment",
+    value: `${roundOffValue > 0 ? "" : "-"}Rs.${numberWithCommas(Math.abs(roundOffValue))}`,
+    bold: false,
+    grandTotal: false,
+  });
+}
   lines.push({label:'GRAND TOTAL',value:`Rs.${numberWithCommas(summary.finalTotal)}`,bold:true,grandTotal:true});
   const rowH=22, signatureH=62, blockH=Math.max(180,lines.length*rowH+signatureH+8);
   if(y+blockH>ph-24){y=Math.max(m,ph-blockH-24);}
@@ -2708,58 +2734,182 @@ const doc=await generateFullPDF(
 </Box>
 
           <Box title="Summary & Grand Total">
-            <div className="summary-inner">
-              <div className="summary-list">
-                <div className="summary-item"><div className="summary-name">Total Cloth Cost</div><div className="summary-total">{currency(totalClothCost)}</div></div>
-                <div className="summary-item"><div className="summary-name">Total Other Costs (Stitching, Lining, Track, Install)</div><div className="summary-total">{currency(totalOther + miscTotal)}</div></div>
-              </div>
-              <div className="commercial-grid">
-                <div className="commercial-card">
-                  <div className="commercial-title">Discount (on Fabric)</div>
-                  <div className="commercial-controls">
-                    <select className="select-xs" value={quoteMeta.commercials.discountType} onChange={e=>setQuoteMeta(o=>({...o,commercials:{...o.commercials,discountType:e.target.value}}))}>
-                      <option value="percent">%</option><option value="fixed">Rs</option>
-                    </select>
-                    <input type="number" className="input-xs" value={quoteMeta.commercials.discountValue} onChange={e=>setQuoteMeta(o=>({...o,commercials:{...o.commercials,discountValue:+e.target.value}}))} />
-                    <span className="commercial-amount text-danger">-{currency(finalTotals.discountAmount)}</span>
-                  </div>
-                  <div className="commercial-note">After Discount: {currency(finalTotals.afterDiscount)}</div>
-                </div>
-                <div className="commercial-card">
-                  <div className="commercial-title">GST</div>
-                  <div className="commercial-controls">
-                    <label style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:13}}>
-                      <input type="checkbox" checked={quoteMeta.commercials.applyGst} onChange={e=>setQuoteMeta(o=>({...o,commercials:{...o.commercials,applyGst:e.target.checked}}))} /> Apply GST
-                    </label>
-                    {quoteMeta.commercials.applyGst && <>
-                      <input type="number" className="input-xs" style={{width:52}} value={quoteMeta.commercials.gstRate} onChange={e=>setQuoteMeta(o=>({...o,commercials:{...o.commercials,gstRate:+e.target.value}}))} />
-                      <span style={{fontSize:12}}>% = {currency(finalTotals.gstAmount)}</span>
-                    </>}
-                  </div>
-                </div>
-              </div>
-              <div className="grand-total-box">
-                <div className="final-row"><span className="final-label">Grand Total</span><span className="final-amount">{currency(finalTotals.finalTotal)}</span></div>
-              </div>
-              <div className="save-bottom-bar">
-                <span className="save-bottom-label">{quoteNo ? `Quote: ${quoteNo}` : 'Not yet saved'}</span>
-                <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                  <button onClick={async()=>{const meta={...quoteMeta,quoteNo};const mergeFabricsRoomWise = window.confirm(
-  "Do you want to merge all fabrics room-wise in the PDF?\n\nOK = Show Main + Sheer in one room row\nCancel = Show each fabric separately"
-);
+  <div className="summary-inner">
+    <div className="summary-list">
+      <div className="summary-item">
+        <div className="summary-name">Total Cloth Cost</div>
+        <div className="summary-total">{currency(totalClothCost)}</div>
+      </div>
 
-const doc=await generateFullPDF(
-  rooms,
-  meta,
-  settings,
-  miscellaneousCosts,
-  mergeFabricsRoomWise
-);doc.save(`Quote_${quoteMeta.customerName||"Customer"}_${quoteNo||"Draft"}.pdf`);}} className="btn btn-outline btn-sm"><Download size={14} /> Download PDF</button>
-                  <button onClick={handleSaveQuote} className="btn btn-primary">Save Quote</button>
-                </div>
-              </div>
-            </div>
-          </Box>
+      <div className="summary-item">
+        <div className="summary-name">Total Other Costs (Stitching, Lining, Track, Install)</div>
+        <div className="summary-total">{currency(totalOther + miscTotal)}</div>
+      </div>
+
+      {Number(finalTotals.roundOff || 0) !== 0 && (
+        <div className="summary-item">
+          <span className="summary-name">Round Off / Adjustment</span>
+          <span className="summary-total">
+            {Number(finalTotals.roundOff || 0) > 0 ? "+" : "-"}
+            {currency(Math.abs(Number(finalTotals.roundOff || 0)))}
+          </span>
+        </div>
+      )}
+    </div>
+
+    <div className="commercial-grid">
+      <div className="commercial-card">
+        <div className="commercial-title">Discount (on Fabric)</div>
+        <div className="commercial-controls">
+          <select
+            className="select-xs"
+            value={quoteMeta.commercials.discountType}
+            onChange={e => setQuoteMeta(o => ({
+              ...o,
+              commercials: {
+                ...o.commercials,
+                discountType: e.target.value,
+              },
+            }))}
+          >
+            <option value="percent">%</option>
+            <option value="fixed">Rs</option>
+          </select>
+
+          <input
+            type="number"
+            className="input-xs"
+            value={quoteMeta.commercials.discountValue}
+            onChange={e => setQuoteMeta(o => ({
+              ...o,
+              commercials: {
+                ...o.commercials,
+                discountValue: +e.target.value,
+              },
+            }))}
+          />
+
+          <span className="commercial-amount text-danger">
+            -{currency(finalTotals.discountAmount)}
+          </span>
+        </div>
+
+        <div className="commercial-note">
+          After Discount: {currency(finalTotals.afterDiscount)}
+        </div>
+      </div>
+
+      <div className="commercial-card">
+        <div className="commercial-title">GST</div>
+        <div className="commercial-controls">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={quoteMeta.commercials.applyGst}
+              onChange={e => setQuoteMeta(o => ({
+                ...o,
+                commercials: {
+                  ...o.commercials,
+                  applyGst: e.target.checked,
+                },
+              }))}
+            />
+            Apply GST
+          </label>
+
+          {quoteMeta.commercials.applyGst && (
+            <>
+              <input
+                type="number"
+                className="input-xs"
+                style={{ width: 52 }}
+                value={quoteMeta.commercials.gstRate}
+                onChange={e => setQuoteMeta(o => ({
+                  ...o,
+                  commercials: {
+                    ...o.commercials,
+                    gstRate: +e.target.value,
+                  },
+                }))}
+              />
+
+              <span style={{ fontSize: 12 }}>
+                % = {currency(finalTotals.gstAmount)}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="commercial-card">
+        <div className="commercial-title">Round Off / Adjustment</div>
+        <div className="commercial-controls">
+          <UnitInput
+            unit="Rs"
+            value={quoteMeta.commercials.roundOff ?? ""}
+            onChange={e => setQuoteMeta(o => ({
+              ...o,
+              commercials: {
+                ...o.commercials,
+                roundOff: e.target.value,
+              },
+            }))}
+            inputMode="decimal"
+            placeholder="e.g. 50 or -50"
+          />
+        </div>
+        <div className="commercial-note">
+          Positive adds, negative subtracts from grand total.
+        </div>
+      </div>
+    </div>
+
+    <div className="grand-total-box">
+      <div className="final-row">
+        <span className="final-label">Grand Total</span>
+        <span className="final-amount">{currency(finalTotals.finalTotal)}</span>
+      </div>
+    </div>
+
+    <div className="save-bottom-bar">
+      <span className="save-bottom-label">
+        {quoteNo ? `Quote: ${quoteNo}` : 'Not yet saved'}
+      </span>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button
+          onClick={async () => {
+            const meta = { ...quoteMeta, quoteNo };
+
+            const mergeFabricsRoomWise = window.confirm(
+              "Do you want to merge all fabrics room-wise in the PDF?\n\nOK = Show Main + Sheer in one room row\nCancel = Show each fabric separately"
+            );
+
+            const doc = await generateFullPDF(
+              rooms,
+              meta,
+              settings,
+              miscellaneousCosts,
+              mergeFabricsRoomWise
+            );
+
+            doc.save(`${quoteNo || "quotation"}.pdf`);
+          }}
+          className="btn btn-outline"
+        >
+          <Download size={15} /> Full PDF
+        </button>
+
+        <button
+          onClick={handleSaveQuote}
+          className="btn btn-primary"
+        >
+          <FileText size={15} /> Save Quote
+        </button>
+      </div>
+    </div>
+  </div>
+</Box>
         </>}
 
         {/* HISTORY TAB */}
