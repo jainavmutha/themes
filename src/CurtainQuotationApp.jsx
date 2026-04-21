@@ -202,11 +202,13 @@ const BlankFabric = (settings = DEFAULT_SETTINGS, label = "Main", overrides = {}
   materialPrice: "",
   clothMeters: "",
   isRomanBlind: false,
-romanBlindSqFt: "",
-isWallpaper: false,
-wallpaperRollQty: "",
-wallpaperRollPrice: "",
-stitching: settings.stitchingTypes[0],
+  romanBlindSqFt: "",
+  blindType: "",
+  blindSqFt: "",
+  isWallpaper: false,
+  wallpaperRollQty: "",
+  wallpaperRollPrice: "",
+  stitching: settings.stitchingTypes[0],
   lining: settings.linings[0],
   track: (settings.tracks && settings.tracks[0]) || {
     id: "std",
@@ -1141,41 +1143,118 @@ function computeFabricSquareFeet(room, fabric = {}) {
   return (widthIn * lengthIn) / 144;
 }
 
+function computeBlindSquareFeet(room, fabric = {}) {
+  const manualSqFt = toNum(fabric.blindSqFt);
+  if (manualSqFt > 0 && Number.isFinite(manualSqFt)) return manualSqFt;
+
+  const widthVal = toNum(fabric.widthInch ?? room.widthInch);
+  const lengthVal = toNum(fabric.lengthInch ?? room.lengthInch);
+
+  const toInches = (val, unit) => {
+    switch (unit || 'in') {
+      case 'ft': return val * 12;
+      case 'm': return val * 39.3701;
+      case 'cm': return val / 2.54;
+      default: return val;
+    }
+  };
+
+  const widthIn = toInches(widthVal, fabric.widthUnit || room.widthUnit || 'in');
+  const lengthIn = toInches(lengthVal, fabric.lengthUnit || room.lengthUnit || 'in');
+
+  if (!widthIn || !lengthIn) return 0;
+
+  const extraHeight = fabric.blindType === "roller" || fabric.blindType === "zebra" ? 10 : 0;
+  const rawSqFt = ((lengthIn + extraHeight) * widthIn) / 144;
+
+  return rawSqFt > 0 ? Math.max(11, rawSqFt) : 0;
+}
+
 /**
  * Compute costs for a single fabric entry within a room.
  */
 function computeFabricCost(room, fabric) {
   const { panels, metersOfCloth, trackFeet, widthFeet } = computeClothMeters(room, fabric);
-  if (fabric.isWallpaper) {
-  const rollQty = toNum(fabric.wallpaperRollQty);
-  const rollPrice = toNum(fabric.wallpaperRollPrice);
-  const clothCost = rollQty * rollPrice;
 
-  return {
-    panels: 0,
-    metersOfCloth: 0,
-    trackFeet: 0,
-    widthFeet: 0,
-    clothCost,
-    stitchingCost: 0,
-    liningCost: 0,
-    romanBlindSqFt: 0,
-    isRomanBlind: false,
-    isWallpaper: true,
-    rollQty,
-    rollPrice,
-    stitchingRate: 0,
-  };
-}
+  if (fabric.isWallpaper) {
+    const rollQty = toNum(fabric.wallpaperRollQty);
+    const rollPrice = toNum(fabric.wallpaperRollPrice);
+    const clothCost = rollQty * rollPrice;
+
+    return {
+      panels: 0,
+      metersOfCloth: 0,
+      trackFeet: 0,
+      widthFeet: 0,
+      clothCost,
+      stitchingCost: 0,
+      liningCost: 0,
+      romanBlindSqFt: 0,
+      blindSqFt: 0,
+      blindRate: 0,
+      blindType: "",
+      isRomanBlind: false,
+      isWallpaper: true,
+      rollQty,
+      rollPrice,
+      stitchingRate: 0,
+    };
+  }
+
+  if (fabric.blindType) {
+    const blindSqFt = computeBlindSquareFeet(room, fabric);
+    const blindRate = toNum(fabric.materialPrice);
+    const blindCost = blindSqFt * blindRate;
+
+    return {
+      panels: 0,
+      metersOfCloth: 0,
+      trackFeet: 0,
+      widthFeet: 0,
+      clothCost: blindCost,
+      stitchingCost: 0,
+      liningCost: 0,
+      romanBlindSqFt: 0,
+      blindSqFt,
+      blindRate,
+      blindType: fabric.blindType,
+      isRomanBlind: false,
+      isWallpaper: false,
+      rollQty: 0,
+      rollPrice: 0,
+      stitchingRate: 0,
+    };
+  }
+
   const clothCost = metersOfCloth * toNum(fabric.materialPrice);
   const isRomanBlind = Boolean(fabric.isRomanBlind || room.isRomanBlind);
   const romanBlindSqFt = isRomanBlind ? computeFabricSquareFeet(room, fabric) : 0;
   const stitchingRate = fabric.stitching?.ratePerPanel || 0;
+
   const stitchingCost = isRomanBlind
     ? romanBlindSqFt * stitchingRate
     : panels * stitchingRate;
+
   const liningCost = metersOfCloth * (fabric.lining?.ratePerMeter || 0);
-  return { panels, metersOfCloth, trackFeet, widthFeet, clothCost, stitchingCost, liningCost, romanBlindSqFt, isRomanBlind, stitchingRate };
+
+  return {
+    panels,
+    metersOfCloth,
+    trackFeet,
+    widthFeet,
+    clothCost,
+    stitchingCost,
+    liningCost,
+    romanBlindSqFt,
+    isRomanBlind,
+    isWallpaper: false,
+    blindSqFt: 0,
+    blindRate: 0,
+    blindType: "",
+    rollQty: 0,
+    rollPrice: 0,
+    stitchingRate,
+  };
 }
 
 /**
@@ -1209,11 +1288,11 @@ function computeRoomCost(room, settings) {
       ? selectedTrackRate
       : (settings?.trackRatePerFt || 0);
 
-    const fabricTrackCost = fc.isWallpaper
-  ? 0
-  : (fc.isRomanBlind
-    ? (fc.widthFeet || 0) * trackRate
-    : (room.needInstallation ? fc.trackFeet * trackRate : 0));
+        const fabricTrackCost = (fc.isWallpaper || fc.blindType)
+      ? 0
+      : (fc.isRomanBlind
+        ? (fc.widthFeet || 0) * trackRate
+        : (room.needInstallation ? fc.trackFeet * trackRate : 0));
 
     totalClothCost += fc.clothCost;
     totalStitchingCost += fc.stitchingCost;
@@ -1482,8 +1561,8 @@ function drawGroupedSummarySection(doc, m, y, rooms, settings, commercials, misc
   const roomFabricColDefs = [
     { title: 'Room',        x: colRoomX2,  w: colRoomW2,  align: 'left'  },
     { title: 'Fabric',      x: colFabricX, w: colFabricW, align: 'left'  },
-    { title: 'Qty',         x: colClothX,  w: colClothW,  align: 'right' },
-    { title: 'Rate',        x: colRateX2,  w: colRateW,   align: 'right' },
+    { title: 'Cloth (m)',   x: colClothX,  w: colClothW,  align: 'right' },
+    { title: 'Rate/m',      x: colRateX2,  w: colRateW,   align: 'right' },
     { title: 'Amount',      x: colAmountX2,w: colAmountW, align: 'right' },
   ];
 
@@ -1525,26 +1604,14 @@ function drawGroupedSummarySection(doc, m, y, rooms, settings, commercials, misc
         return sum + Number(item.fc.metersOfCloth || 0);
       }, 0);
 
-      const totalRolls = fabricCosts.reduce((sum, item) => {
-        return sum + Number(item.fc.rollQty || 0);
-      }, 0);
-
       const totalAmount = fabricCosts.reduce((sum, item) => {
         return sum + Number(item.fc.clothCost || 0);
       }, 0);
 
-      const hasWallpaper = fabricCosts.some(({ fab, fc }) => fab.isWallpaper || fc.isWallpaper);
-      const hasFabricMeters = totalMeters > 0;
-      const qtyText = hasWallpaper && !hasFabricMeters
-        ? `${totalRolls.toFixed(2)} rolls`
-        : (hasWallpaper && hasFabricMeters
-          ? `${totalMeters.toFixed(2)} m + ${totalRolls.toFixed(2)} rolls`
-          : `${totalMeters.toFixed(2)} m`);
-
       const rates = Array.from(
         new Set(
           fabricCosts
-            .map(({ fab, fc }) => Number((fab.isWallpaper || fc.isWallpaper) ? fc.rollPrice : fab.materialPrice || 0))
+            .map(({ fab }) => Number(fab.materialPrice || 0))
             .filter(rate => rate > 0)
         )
       );
@@ -1559,7 +1626,7 @@ function drawGroupedSummarySection(doc, m, y, rooms, settings, commercials, misc
         [
           room.name || 'Room',
           fabricLabel || 'Fabric',
-          qtyText,
+          `${totalMeters.toFixed(2)} m`,
           rateText,
           `Rs.${numberWithCommas(Math.round(totalAmount))}`,
         ],
@@ -1610,16 +1677,16 @@ function drawGroupedSummarySection(doc, m, y, rooms, settings, commercials, misc
 
       // cloth qty, rate, amount
       rightText(
-        fab.isWallpaper ? `${Number(fc.rollQty || 0).toFixed(2)} rolls` : `${fc.metersOfCloth.toFixed(2)} m`,
-        colClothX+colClothW-8,
-        ry+lineH
-      );
+  fab.isWallpaper ? `${Number(fc.rollQty || 0).toFixed(2)} rolls` : (fc.blindType ? `${Number(fc.blindSqFt || 0).toFixed(2)} sq ft` : `${fc.metersOfCloth.toFixed(2)} m`),
+  colClothX+colClothW-8,
+  ry+lineH
+);
 
-      rightText(
-        fab.isWallpaper ? `Rs.${numberWithCommas(fc.rollPrice || 0)}` : `Rs.${numberWithCommas(fab.materialPrice||0)}`,
-        colRateX2+colRateW-8,
-        ry+lineH
-      );
+rightText(
+  fab.isWallpaper ? `Rs.${numberWithCommas(fc.rollPrice || 0)}` : `Rs.${numberWithCommas(fc.blindType ? fc.blindRate : (fab.materialPrice||0))}`,
+  colRateX2+colRateW-8,
+  ry+lineH
+);
       rightText(`Rs.${numberWithCommas(Math.round(fc.clothCost))}`, colAmountX2+colAmountW-8, ry+lineH);
     });
 
@@ -1791,19 +1858,6 @@ const FabricRow = React.memo(function FabricRow({ fabric, room, settings, onChan
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 800, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
   <input
     type="checkbox"
-    checked={!!fabric.isRomanBlind}
-    disabled={!!fabric.isWallpaper}
-    onChange={e => onChange({
-      isRomanBlind: e.target.checked,
-      romanBlindSqFt: e.target.checked ? fabric.romanBlindSqFt : "",
-    })}
-  />
-  Roman Blind
-</label>
-
-<label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 800, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
-  <input
-    type="checkbox"
     checked={!!fabric.isWallpaper}
     onChange={e => onChange({
       isWallpaper: e.target.checked,
@@ -1811,14 +1865,47 @@ const FabricRow = React.memo(function FabricRow({ fabric, room, settings, onChan
       romanBlindSqFt: "",
       panels: e.target.checked ? "" : fabric.panels,
       clothMeters: e.target.checked ? "" : fabric.clothMeters,
+      blindType: e.target.checked ? "" : fabric.blindType,
+      blindSqFt: e.target.checked ? "" : fabric.blindSqFt,
     })}
   />
   Wallpaper
 </label>
 
+<label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 800, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+  Type
+  <select
+    className="select"
+    style={{ width: 156, padding: '5px 8px', fontSize: 12 }}
+    value={fabric.isRomanBlind ? "roman" : (fabric.blindType || "")}
+    disabled={!!fabric.isWallpaper}
+    onChange={e => {
+      const value = e.target.value;
+      const isRoman = value === "roman";
+      onChange({
+        blindType: isRoman ? "" : value,
+        blindSqFt: value && !isRoman ? fabric.blindSqFt : "",
+        isRomanBlind: isRoman,
+        romanBlindSqFt: isRoman ? fabric.romanBlindSqFt : "",
+        isWallpaper: false,
+        panels: value ? "" : fabric.panels,
+        clothMeters: value ? "" : fabric.clothMeters,
+      });
+    }}
+  >
+    <option value="">None</option>
+    <option value="roman">Roman Blind</option>
+    <option value="roller">Roller Blind</option>
+    <option value="zebra">Zebra Blind</option>
+    <option value="wooden">Wooden Blind</option>
+  </select>
+</label>
+
         <span className="fabric-cost-pill">
-          {currency(fc.clothCost + fc.stitchingCost + fc.liningCost)}
-        </span>
+  {fc.blindType
+    ? `Blinds Cost: ${currency(fc.clothCost)}`
+    : currency(fc.clothCost + fc.stitchingCost + fc.liningCost)}
+</span>
 
         {canRemove && (
           <button className="btn-remove-fabric" onClick={onRemove} title="Remove fabric">
@@ -1856,6 +1943,71 @@ const FabricRow = React.memo(function FabricRow({ fabric, room, settings, onChan
         onChange={e => onChange({ wallpaperRollPrice: e.target.value })}
         inputMode="decimal"
         placeholder="e.g. 2500"
+      />
+    </Field>
+  </>
+) : fabric.blindType ? (
+  <>
+    <Field label="Blind Name">
+      <input
+        className="input"
+        value={fabric.materialName || ""}
+        onChange={e => onChange({ materialName: e.target.value })}
+        placeholder={fabric.blindType === "roller" ? "Roller Blind" : fabric.blindType === "zebra" ? "Zebra Blind" : "Wooden Blind"}
+      />
+    </Field>
+
+    <Field label="Height" hint={fabric.blindType === "wooden" ? "value + unit" : "height + 10 inches used"}>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <UnitInput
+          unit={fabric.lengthUnit || 'in'}
+          value={fabric.lengthInch}
+          onChange={e => onChange({ lengthInch: e.target.value })}
+          inputMode="decimal"
+          placeholder="e.g. 90"
+        />
+        <select className="select" style={{ width: 76 }} value={fabric.lengthUnit || 'in'} onChange={e => onChange({ lengthUnit: e.target.value })}>
+          <option value="in">in</option>
+          <option value="ft">ft</option>
+          <option value="m">m</option>
+        </select>
+      </div>
+    </Field>
+
+    <Field label="Width" hint="value + unit">
+      <div style={{ display: 'flex', gap: 8 }}>
+        <UnitInput
+          unit={fabric.widthUnit || 'in'}
+          value={fabric.widthInch}
+          onChange={e => onChange({ widthInch: e.target.value })}
+          inputMode="decimal"
+          placeholder="e.g. 60"
+        />
+        <select className="select" style={{ width: 76 }} value={fabric.widthUnit || 'in'} onChange={e => onChange({ widthUnit: e.target.value })}>
+          <option value="in">in</option>
+          <option value="ft">ft</option>
+          <option value="m">m</option>
+        </select>
+      </div>
+    </Field>
+
+    <Field label="Sq Ft" hint="auto-calculated, min 11, editable">
+      <UnitInput
+        unit="sq ft"
+        value={fabric.blindSqFt ?? ""}
+        onChange={e => onChange({ blindSqFt: e.target.value })}
+        inputMode="decimal"
+        placeholder={Number(fc.blindSqFt || 0).toFixed(2)}
+      />
+    </Field>
+
+    <Field label="Price / Sq Ft">
+      <UnitInput
+        unit="Rs"
+        value={fabric.materialPrice}
+        onChange={e => onChange({ materialPrice: e.target.value })}
+        inputMode="decimal"
+        placeholder="e.g. 250"
       />
     </Field>
   </>
