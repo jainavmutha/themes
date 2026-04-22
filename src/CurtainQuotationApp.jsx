@@ -472,6 +472,16 @@ function currency(n) {
 function numberWithCommas(x) {
   return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0, minimumFractionDigits: 0, useGrouping: true }).format(Math.round(Number(x || 0)));
 }
+
+function safeFileNamePart(value, fallback = "Customer") {
+  const cleaned = String(value || "")
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "")
+    .replace(/\s+/g, "-");
+
+  return cleaned || fallback;
+}
+
 const toNum = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
 const ceilDiv = (a, b) => Math.ceil(a / b);
 function useStableRefMap() {
@@ -1710,8 +1720,35 @@ export default function CurtainQuotationApp() {
               <div className="save-bottom-bar">
                 <span className="save-bottom-label">{quoteNo ? `Quote: ${quoteNo}` : 'Not yet saved'}</span>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button onClick={async () => { const meta = { ...quoteMeta, quoteNo }; const mergeFabricsRoomWise = window.confirm("Do you want to merge all fabrics room-wise in the PDF?\n\nOK = Show Main + Sheer in one room row\nCancel = Show each fabric separately"); const doc = await generateFullPDF(rooms, meta, settings, miscellaneousCosts, mergeFabricsRoomWise); const customerFileName = safeFileNamePart(meta.customerName || quoteMeta.customerName);
-doc.save(`${meta.quoteNo || quoteNo || "quotation"}-${customerFileName}.pdf`); }} className="btn btn-outline"><Download size={15} /> Full PDF</button>
+                  <button onClick={async () => {
+  try {
+    const finalNo = quoteNo || await generateQuoteNo();
+    if (!quoteNo) setQuoteNo(finalNo);
+
+    const meta = {
+      ...quoteMeta,
+      quoteNo: finalNo,
+    };
+
+    const mergeFabricsRoomWise = window.confirm(
+      "Do you want to merge all fabrics room-wise in the PDF?\n\nOK = Show Main + Sheer in one room row\nCancel = Show each fabric separately"
+    );
+
+    const doc = await generateFullPDF(
+      rooms,
+      meta,
+      settings,
+      miscellaneousCosts,
+      mergeFabricsRoomWise
+    );
+
+    const customerFileName = safeFileNamePart(meta.customerName || quoteMeta.customerName);
+    doc.save(`${finalNo}-${customerFileName}.pdf`);
+  } catch (err) {
+    console.error(err);
+    alert("Could not download the PDF. Please check the quote details and try again.");
+  }
+}} className="btn btn-outline"><Download size={15} /> Full PDF</button>
                   <button onClick={handleSaveQuote} className="btn btn-primary"><FileText size={15} /> Save Quote</button>
                 </div>
               </div>
