@@ -1058,10 +1058,7 @@ function LoginScreen({ onLogin }) {
           </button>
         </form>
 
-        <div className="auth-help">
-          Default logins: <strong>admin / admin123</strong> and <strong>staff / staff123</strong>.
-          Change these in <code>AUTH_USERS</code> before real use.
-        </div>
+        
       </div>
     </div>
   );
