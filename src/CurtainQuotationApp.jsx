@@ -2775,24 +2775,3 @@ export default function CurtainQuotationApp()
     </div>
   );
 }
-// Helpers for fabric processing online persistence
-async function loadRemoteFabricProcessing() {
-  if (!hasSupabaseConfig()) return null;
-  const client = getSupabaseClient();
-  const { data, error } = await client
-    .from('app_state')
-    .select('value')
-    .eq('key', LS_FABRIC_PROCESSING_KEY)
-    .maybeSingle();
-  if (error && error.code !== 'PGRST116') throw error;
-  return Array.isArray(data?.value) ? data.value : null;
-}
-
-async function saveRemoteFabricProcessing(items) {
-  if (!hasSupabaseConfig()) return;
-  const client = getSupabaseClient();
-  const { error } = await client
-    .from('app_state')
-    .upsert({ key: LS_FABRIC_PROCESSING_KEY, value: items || [], updated_at: new Date().toISOString() }, { onConflict: 'key' });
-  if (error) throw error;
-}
