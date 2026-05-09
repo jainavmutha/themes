@@ -2128,17 +2128,29 @@ export default function CurtainQuotationApp()
   }, []);
 
   const setGlobalFabricItems = useCallback((updater) => {
-    setGlobalFabricItemsRaw(prev => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      saveGlobalFabricProcessing(next);
+  setGlobalFabricItemsRaw(prev => {
+    const next = typeof updater === 'function' ? updater(prev) : updater;
 
-      if (fabricProcessingHydratedRef.current && hasSupabaseConfig()) {
-        saveRemoteFabricProcessing(next).catch(err => console.error('Could not save fabric processing online', err));
-      }
+    saveGlobalFabricProcessing(next);
 
-      return next;
-    });
-  }, []);
+    if (hasSupabaseConfig()) {
+      saveRemoteFabricProcessing(next)
+        .then(() => {
+          console.log("Fabric Processing saved online:", next.length, "items");
+        })
+        .catch(err => {
+          console.error("Could not save fabric processing online", err);
+          if (err?.message) {
+            console.error("Fabric Processing Supabase error:", err.message);
+          }
+        });
+    } else {
+      console.warn("Fabric Processing saved locally only. Supabase config missing.");
+    }
+
+    return next;
+  });
+}, []);
 
   useEffect(() => {
     let cancelled = false;
