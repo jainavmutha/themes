@@ -29,6 +29,7 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 const SUPABASE_QUOTES_TABLE = "themes_quotes";
 const SUPABASE_SETTINGS_TABLE = "themes_app_settings";
+const SUPABASE_APP_STATE_TABLE = "app_state";
 const SETTINGS_ROW_ID = "pricing_settings";
 const DEFAULT_LOGO_URL = import.meta.env.VITE_DEFAULT_LOGO_URL || "https://drive.google.com/uc?export=view&id=1zPOSv3lHBukCB7QtZrD-oc3j8T8YxbYx";
 const DEFAULT_SIGNATURE_URL = import.meta.env.VITE_DEFAULT_SIGNATURE_URL || "https://drive.google.com/uc?export=view&id=1w4OXKhD37BWQfAit1zOTBGlHK1YpfZqn";
@@ -176,7 +177,31 @@ function loadGlobalFabricProcessing() {
 function saveGlobalFabricProcessing(items) {
   localStorage.setItem(LS_FABRIC_PROCESSING_KEY, JSON.stringify(items));
 }
+async function loadRemoteFabricProcessing() {
+  if (!hasSupabaseConfig()) return null;
 
+  const rows = await supabaseFetch(
+    `/rest/v1/${SUPABASE_APP_STATE_TABLE}?select=value&key=eq.${encodeURIComponent(LS_FABRIC_PROCESSING_KEY)}&limit=1`
+  );
+
+  return Array.isArray(rows?.[0]?.value) ? rows[0].value : null;
+}
+
+async function saveRemoteFabricProcessing(items) {
+  if (!hasSupabaseConfig()) return;
+
+  await supabaseFetch(`/rest/v1/${SUPABASE_APP_STATE_TABLE}?on_conflict=key`, {
+    method: "POST",
+    body: JSON.stringify({
+      key: LS_FABRIC_PROCESSING_KEY,
+      value: Array.isArray(items) ? items : [],
+      updated_at: new Date().toISOString(),
+    }),
+    headers: {
+      Prefer: "resolution=merge-duplicates,return=minimal",
+    },
+  });
+}
 /* =========================
    SETTINGS
    ========================= */
