@@ -188,19 +188,27 @@ async function loadRemoteFabricProcessing() {
 }
 
 async function saveRemoteFabricProcessing(items) {
-  if (!hasSupabaseConfig()) return;
+  if (!hasSupabaseConfig()) {
+    console.warn("Fabric Processing remote save skipped: Supabase config missing");
+    return null;
+  }
 
-  await supabaseFetch(`/rest/v1/${SUPABASE_APP_STATE_TABLE}?on_conflict=key`, {
+  const payload = {
+    key: LS_FABRIC_PROCESSING_KEY,
+    value: Array.isArray(items) ? items : [],
+    updated_at: new Date().toISOString(),
+  };
+
+  const result = await supabaseFetch(`/rest/v1/${SUPABASE_APP_STATE_TABLE}?on_conflict=key`, {
     method: "POST",
-    body: JSON.stringify({
-      key: LS_FABRIC_PROCESSING_KEY,
-      value: Array.isArray(items) ? items : [],
-      updated_at: new Date().toISOString(),
-    }),
+    body: JSON.stringify(payload),
     headers: {
-      Prefer: "resolution=merge-duplicates,return=minimal",
+      Prefer: "resolution=merge-duplicates,return=representation",
     },
   });
+
+  console.log("Fabric Processing saved online", payload.value.length, "items", result);
+  return result;
 }
 /* =========================
    SETTINGS
@@ -1620,6 +1628,16 @@ function FabricProcessingTab({ globalFabricItems, onUpdateGlobalItems, onClearAl
   const markAllReceived = () => setItems(prev => prev.map(i => ({ ...i, ordered: true, received: true })));
   const resetAll = () => setItems(prev => prev.map(i => ({ ...i, ordered: false, received: false })));
   const removeItem = (id) => setItems(prev => prev.filter(i => i.id !== id));
+  const saveFabricProcessingOnlineNow = useCallback(async () => {
+  try {
+    saveGlobalFabricProcessing(items);
+    await saveRemoteFabricProcessing(items);
+    alert(`Fabric Processing saved online — ${items.length} item${items.length !== 1 ? "s" : ""}`);
+  } catch (err) {
+    console.error("Manual Fabric Processing online save failed", err);
+    alert(err?.message ? `Online save failed: ${err.message}` : "Online save failed. Check console.");
+  }
+}, [items]);
 
   const addManualFabric = useCallback(() => {
     const fabricName = String(manualFabric.fabricName || "").trim();
@@ -1852,6 +1870,9 @@ function FabricProcessingTab({ globalFabricItems, onUpdateGlobalItems, onClearAl
         <button className="btn btn-outline btn-sm" type="button" onClick={downloadFabricProcessingExcel}>
           <Download size={13} /> Download Excel
         </button>
+        <button className="btn btn-primary btn-sm" type="button" onClick={saveFabricProcessingOnlineNow}>
+  Save Online
+</button>
         <button className="btn btn-danger btn-sm" style={{ marginLeft: 'auto' }} onClick={() => { if (window.confirm('Clear ALL fabric processing items? This cannot be undone.')) onClearAll(); }}>
           <Trash2 size={13} /> Clear All
         </button>
