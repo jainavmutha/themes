@@ -2069,12 +2069,48 @@ export default function CurtainQuotationApp()
     commercials: { applyGst: false, gstRate: 0, discountType: "percent", discountValue: 0, place: "Pune", signatoryName: "Authorized Signatory", signatoryTitle: "", signatureUrl: normalizeImageUrl(DEFAULT_SIGNATURE_URL), needGstBill: false, gstin: "", billingAddress: "" },
   });
 
-  // Global fabric processing state — persisted to localStorage
+// Global fabric processing state — persisted locally and synced online when Supabase is configured
   const [globalFabricItems, setGlobalFabricItemsRaw] = useState(() => loadGlobalFabricProcessing());
+  const fabricProcessingHydratedRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function hydrateFabricProcessing() {
+      if (!hasSupabaseConfig()) {
+        fabricProcessingHydratedRef.current = true;
+        return;
+      }
+
+      try {
+        const remoteItems = await loadRemoteFabricProcessing();
+        if (cancelled) return;
+        if (Array.isArray(remoteItems)) {
+          setGlobalFabricItemsRaw(remoteItems);
+          saveGlobalFabricProcessing(remoteItems);
+        } else {
+          const localItems = loadGlobalFabricProcessing();
+          await saveRemoteFabricProcessing(localItems);
+        }
+      } catch (err) {
+        console.error('Could not load fabric processing online', err);
+      } finally {
+        if (!cancelled) fabricProcessingHydratedRef.current = true;
+      }
+    }
+
+    hydrateFabricProcessing();
+    return () => { cancelled = true; };
+  }, []);
+
   const setGlobalFabricItems = useCallback((updater) => {
     setGlobalFabricItemsRaw(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
       saveGlobalFabricProcessing(next);
+
+      if (fabricProcessingHydratedRef.current && hasSupabaseConfig()) {
+        saveRemoteFabricProcessing(next).catch(err => console.error('Could not save fabric processing online', err));
+      }
+
       return next;
     });
   }, []);
@@ -2701,4 +2737,25 @@ export default function CurtainQuotationApp()
       </div>
     </div>
   );
+}
+// Helpers for fabric processing online persistence
+async function loadRemoteFabricProcessing() {
+  if (!hasSupabaseConfig()) return null;
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('app_state')
+    .select('value')
+    .eq('key', LS_FABRIC_PROCESSING_KEY)
+    .maybeSingle();
+  if (error && error.code !== 'PGRST116') throw error;
+  return Array.isArray(data?.value) ? data.value : null;
+}
+
+async function saveRemoteFabricProcessing(items) {
+  if (!hasSupabaseConfig()) return;
+  const client = getSupabaseClient();
+  const { error } = await client
+    .from('app_state')
+    .upsert({ key: LS_FABRIC_PROCESSING_KEY, value: items || [], updated_at: new Date().toISOString() }, { onConflict: 'key' });
+  if (error) throw error;
 }
