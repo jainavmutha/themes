@@ -1,11 +1,30 @@
 import React, { useMemo, useRef, useState, useCallback, useEffect } from "react";
-import { Download, Plus, Trash2, Copy, FileText, BarChart2, ShoppingCart } from "lucide-react";
+import { Download, Plus, Trash2, Copy, FileText, Package, BarChart2, ShoppingCart, CheckSquare } from "lucide-react";
 import { jsPDF } from "jspdf";
+
 /* =========================
    Quote Storage & Numbering
    ========================= */
 const LS_QUOTES_KEY = "themes_quotes_v1";
 const LS_SEQ_PREFIX = "themes_seq_";
+// Global fabric processing store — NOT quote-specific
+const LS_FABRIC_PROCESSING_KEY = "themes_fabric_processing_global_v1";
+const LS_AUTH_USER_KEY = "themes_auth_user_v1";
+
+const AUTH_USERS = [
+  { username: "admin", password: "Themes@141$", role: "admin", label: "Admin" },
+  { username: "staff", password: "staff123", role: "staff", label: "Staff" },
+];
+
+const STAFF_ALLOWED_TABS = new Set(["quote", "settings", "fabric-processing"]);
+
+function canAccessTab(user, tab) {
+  if (!user) return false;
+  if (user.role === "admin") return true;
+  if (user.role === "staff") return STAFF_ALLOWED_TABS.has(tab);
+  return false;
+}
+
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 const SUPABASE_QUOTES_TABLE = "themes_quotes";
@@ -23,6 +42,7 @@ const STATUS_COLORS = {
   Rejected:  { bg: "#FEF2F2", text: "#991B1B", border: "#FECACA" },
   Cancelled: { bg: "#FFF7ED", text: "#92400E", border: "#FED7AA" },
 };
+
 function stripUrlQuotes(url) {
   return String(url || "").trim().replace(/^['"]|['"]$/g, "");
 }
@@ -115,14 +135,6 @@ async function saveQuoteRecord(quoteNo, data) {
   await saveAllQuotes(map);
   return record;
 }
-async function getQuoteRecord(quoteNo) {
-  if (hasSupabaseConfig()) {
-    const rows = await supabaseFetch(`/rest/v1/${SUPABASE_QUOTES_TABLE}?select=quote_no,data,created_at,updated_at&quote_no=eq.${encodeURIComponent(quoteNo)}&limit=1`);
-    return rowToQuoteRecord(rows?.[0]) || null;
-  }
-  const map = await loadAllQuotes();
-  return map[quoteNo] || null;
-}
 async function deleteQuoteRecord(quoteNo) {
   if (hasSupabaseConfig()) {
     await supabaseFetch(`/rest/v1/${SUPABASE_QUOTES_TABLE}?quote_no=eq.${encodeURIComponent(quoteNo)}`, { method: "DELETE", headers: { Prefer: "return=minimal" } });
@@ -154,6 +166,17 @@ function mergeSettingsWithDefaults(value) {
     tracks: Array.isArray(saved.tracks) && saved.tracks.length ? saved.tracks : DEFAULT_SETTINGS.tracks,
   };
 }
+
+/* =========================
+   Global Fabric Processing Store
+   ========================= */
+function loadGlobalFabricProcessing() {
+  try { return JSON.parse(localStorage.getItem(LS_FABRIC_PROCESSING_KEY) || '[]'); } catch { return []; }
+}
+function saveGlobalFabricProcessing(items) {
+  localStorage.setItem(LS_FABRIC_PROCESSING_KEY, JSON.stringify(items));
+}
+
 /* =========================
    SETTINGS
    ========================= */
@@ -188,6 +211,7 @@ function loadSettings() {
     };
   } catch { return DEFAULT_SETTINGS; }
 }
+
 /* =========================
    Fabric entry factory
    ========================= */
@@ -213,15 +237,10 @@ const BlankFabric = (settings = DEFAULT_SETTINGS, label = "Main", overrides = {}
   wallpaperRollPrice: "",
   stitching: settings.stitchingTypes[0],
   lining: settings.linings[0],
-  track: (settings.tracks && settings.tracks[0]) || {
-    id: "std",
-    label: "Standard Track",
-    ratePerFt: settings.trackRatePerFt || 250,
-  },
-  // CHANGED: orderReductionQty (whole number) instead of orderReductionPct (%)
-  orderReductionQty: 0,
+  track: (settings.tracks && settings.tracks[0]) || { id: "std", label: "Standard Track", ratePerFt: settings.trackRatePerFt || 250 },
   ...overrides,
 });
+
 /* =========================
    PDF Helpers
    ========================= */
@@ -251,6 +270,7 @@ async function fileToDataURL(file) {
   return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(file); });
 }
 const pdfColor = (hex) => { const n = hex.replace("#", ""); return [parseInt(n.slice(0,2),16), parseInt(n.slice(2,4),16), parseInt(n.slice(4,6),16)]; };
+
 /* =========================
    Brand
    ========================= */
@@ -260,7 +280,7 @@ const BRAND = {
   logoUrl: normalizeImageUrl(DEFAULT_LOGO_URL),
   companyName: "Themes Furnishings & Decor",
   pdfCompanyName: "Themes Furnishings & Decor",
-  website: "www.themesfurnishings.com",
+  website: "[www.themesfurnishings.com](https://www.themesfurnishings.com)",
   phone: "+91 9890299404",
   email: "themesfurnishings@hotmail.com",
   address: "141 MG Road, Pune 411040",
@@ -268,6 +288,7 @@ const BRAND = {
   paymentQrUrl: normalizeImageUrl(DEFAULT_PAYMENT_QR_URL),
   paymentUpiId: DEFAULT_PAYMENT_UPI_ID,
 };
+
 const GLOBAL_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
   :root {
@@ -396,8 +417,6 @@ const GLOBAL_CSS = `
   @media (max-width: 640px) { .dash-charts-grid { grid-template-columns: 1fr; } }
   .dash-chart-card { background: white; border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
   .dash-chart-title { font-size: 13px; font-weight: 800; color: var(--primary-dark); margin-bottom: 12px; }
-  .order-section-title { font-size: 13px; font-weight: 800; color: var(--primary); margin: 16px 0 8px; padding-bottom: 4px; border-bottom: 2px solid var(--border); }
-  .reduction-input { width: 72px; border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 12px; text-align: right; }
   html, body, #root { width: 100%; min-height: 100%; overflow-x: hidden; }
   .app-container { background: linear-gradient(180deg, #FAFAFB 0%, #F3F4F6 100%); width: 100%; max-width: 100vw; }
   .app-inner { width: 100%; max-width: 1080px; }
@@ -461,7 +480,93 @@ const GLOBAL_CSS = `
     .room-actions .btn-icon, .btn-icon { width: auto; }
     .dash-kpi-grid { grid-template-columns: repeat(2,1fr); }
   }
+  /* Order Processing */
+  .op-banner { display: flex; align-items: center; gap: 12px; background: linear-gradient(90deg,#ECFDF5,#F0FFF4); border: 1px solid #6EE7B7; border-radius: 12px; padding: 14px 18px; margin-bottom: 18px; }
+  .op-banner-icon { font-size: 28px; }
+  .op-banner-text { flex: 1; }
+  .op-banner-title { font-size: 15px; font-weight: 900; color: #065F46; }
+  .op-banner-sub { font-size: 12px; color: #047857; margin-top: 2px; }
+  .op-financials { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-bottom: 20px; }
+  @media (max-width: 640px) { .op-financials { grid-template-columns: 1fr; } }
+  .op-fin-card { border-radius: 14px; padding: 16px; border: 1px solid; text-align: center; }
+  .op-fin-card.quote { background: #FFF5FA; border-color: rgba(229,9,127,0.18); }
+  .op-fin-card.advance { background: #F0FDF4; border-color: #BBF7D0; }
+  .op-fin-card.balance { background: #FFF7ED; border-color: #FED7AA; }
+  .op-fin-card.balance.settled { background: #ECFDF5; border-color: #6EE7B7; }
+  .op-fin-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+  .op-fin-card.quote .op-fin-label { color: var(--primary); }
+  .op-fin-card.advance .op-fin-label { color: #059669; }
+  .op-fin-card.balance .op-fin-label { color: #D97706; }
+  .op-fin-card.balance.settled .op-fin-label { color: #065F46; }
+  .op-fin-value { font-size: 22px; font-weight: 900; }
+  .op-fin-card.quote .op-fin-value { color: var(--primary); }
+  .op-fin-card.advance .op-fin-value { color: #059669; }
+  .op-fin-card.balance .op-fin-value { color: #D97706; }
+  .op-fin-card.balance.settled .op-fin-value { color: #065F46; }
+  .op-fin-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .op-advance-input { border: 1.5px solid #BBF7D0; border-radius: 8px; padding: 8px 12px; font-size: 14px; font-weight: 700; width: 160px; outline: none; background: white; }
+  .op-advance-input:focus { border-color: #059669; }
+  .op-order-items { display: flex; flex-direction: column; gap: 12px; }
+  .op-item-card { background: #FAFAFA; border: 1px solid #EFE7E0; border-radius: 14px; overflow: hidden; }
+  .op-item-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: linear-gradient(90deg,#FFF8FC,#FFFFFF); border-bottom: 1px solid #EFE7E0; }
+  .op-item-badge { background: rgba(183,7,102,0.10); color: var(--primary); border: 1px solid rgba(183,7,102,0.18); border-radius: 999px; padding: 3px 12px; font-size: 11px; font-weight: 800; }
+  .op-item-room { font-size: 12px; color: var(--muted); font-weight: 700; }
+  .op-item-cost { margin-left: auto; font-size: 13px; font-weight: 900; color: var(--primary); background: #FFF5FA; border: 1px solid rgba(229,9,127,0.14); border-radius: 999px; padding: 4px 12px; }
+  .op-item-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; padding: 14px; }
+  @media (max-width: 700px) { .op-item-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+  @media (max-width: 420px) { .op-item-grid { grid-template-columns: 1fr; } }
+  .op-item-grid .field { background: white; border: 1px solid #EFE7E0; border-radius: 10px; padding: 10px; }
+  .op-item-notes { padding: 0 14px 14px; }
+  .op-item-notes .input { background: white; }
+  .op-summary-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .op-summary-table th { text-align: left; padding: 9px 12px; background: #FFF5FA; border-bottom: 2px solid var(--border); font-weight: 800; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
+  .op-summary-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .op-summary-table tr:last-child td { border-bottom: none; }
+  .op-summary-table tr:hover td { background: #FFF9F2; }
+  .op-not-approved { text-align: center; padding: 40px 24px; }
+  .op-not-approved-icon { font-size: 48px; margin-bottom: 12px; }
+  .op-not-approved-title { font-size: 18px; font-weight: 800; color: var(--primary-dark); margin-bottom: 8px; }
+  .op-not-approved-sub { font-size: 13px; color: var(--muted); max-width: 380px; margin: 0 auto; line-height: 1.6; }
+  .op-progress-bar-bg { height: 10px; background: #F3F4F6; border-radius: 999px; overflow: hidden; margin-top: 8px; }
+  .op-progress-bar-fill { height: 100%; border-radius: 999px; transition: width 0.4s ease; }
+  /* Fabric Processing */
+  .fp-kpi-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; }
+  @media (max-width: 640px) { .fp-kpi-grid { grid-template-columns: repeat(2,1fr); } }
+  .fp-kpi { background: white; border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; text-align: center; }
+  .fp-kpi-label { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 6px; }
+  .fp-progress-card { background: white; border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .fp-progress-row { display: flex; flex-direction: column; gap: 4px; }
+  .fp-progress-meta { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; color: var(--muted); }
+  .fp-progress-bar-bg { height: 8px; background: #F3F4F6; border-radius: 999px; overflow: hidden; }
+  .fp-progress-bar-fill { height: 100%; border-radius: 999px; transition: width 0.35s ease; }
+  .fp-bulk-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .fp-checklist-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 980px; }
+  .fp-checklist-table th { text-align: left; padding: 9px 12px; background: #FFF5FA; border-bottom: 2px solid var(--border); font-weight: 800; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; }
+  .fp-checklist-table th.center { text-align: center; }
+  .fp-checklist-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; transition: background 0.2s; }
+  .fp-checklist-table tr:last-child td { border-bottom: none; }
+  .fp-legend { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+  .fp-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+  .fp-legend-swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; border: 1px solid; }
+  /* Process Order CTA */
+  .process-order-cta { background: linear-gradient(135deg, #ECFDF5, #D1FAE5); border: 2px solid #6EE7B7; border-radius: 14px; padding: 20px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .process-order-cta-text { flex: 1; }
+  .process-order-cta-title { font-size: 15px; font-weight: 900; color: #065F46; margin-bottom: 4px; }
+  .process-order-cta-sub { font-size: 12px; color: #047857; }
+  /* Auth */
+  .auth-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; background: linear-gradient(135deg, #F5EBDD 0%, #FFFFFF 48%, #FFF5FA 100%); }
+  .auth-card { width: 100%; max-width: 420px; background: white; border: 1px solid #EFE3D8; border-radius: 18px; box-shadow: 0 18px 50px rgba(46,46,46,0.10); padding: 26px; }
+  .auth-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .auth-logo { height: 44px; border-radius: 8px; }
+  .auth-title { font-size: 20px; font-weight: 900; color: var(--primary-dark); }
+  .auth-subtitle { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .auth-form { display: flex; flex-direction: column; gap: 12px; }
+  .auth-error { background: #FEF2F2; border: 1px solid #FECACA; color: #991B1B; border-radius: 10px; padding: 10px 12px; font-size: 12px; font-weight: 800; }
+  .auth-help { margin-top: 14px; font-size: 11px; color: var(--muted); line-height: 1.5; background: #FBFAF8; border: 1px dashed #E7E0D8; border-radius: 10px; padding: 10px 12px; }
+  .user-pill { display: inline-flex; align-items: center; gap: 8px; background: #FBFAF8; border: 1px solid #EFE3D8; color: var(--primary-dark); border-radius: 999px; padding: 7px 12px; font-size: 12px; font-weight: 900; }
+  .user-role { color: var(--primary); text-transform: capitalize; }
 `;
+
 /* =========================
    Utils
    ========================= */
@@ -472,27 +577,13 @@ function currency(n) {
 function numberWithCommas(x) {
   return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0, minimumFractionDigits: 0, useGrouping: true }).format(Math.round(Number(x || 0)));
 }
-
 function safeFileNamePart(value, fallback = "Customer") {
-  const cleaned = String(value || "")
-    .trim()
-    .replace(/[\\/:*?"<>|]+/g, "")
-    .replace(/\s+/g, "-");
-
+  const cleaned = String(value || "").trim().replace(/[\\/:*?"<>|]+/g, "").replace(/\s+/g, "-");
   return cleaned || fallback;
 }
-
 const toNum = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
 const ceilDiv = (a, b) => Math.ceil(a / b);
-function useStableRefMap() {
-  const mapRef = React.useRef({});
-  const get = React.useCallback((key) => {
-    if (!mapRef.current[key]) mapRef.current[key] = (el) => { mapRef.current.__store = mapRef.current.__store || {}; mapRef.current.__store[key] = el; };
-    return mapRef.current[key];
-  }, []);
-  const read = React.useCallback((key) => (mapRef.current.__store || {})[key], []);
-  return { get, read };
-}
+
 /* =========================
    Cost Engines
    ========================= */
@@ -660,6 +751,7 @@ function computeAllTotals(rooms, commercials, settings, miscellaneousCosts = [])
     }
   };
 }
+
 /* =========================
    Room / Fabric factories
    ========================= */
@@ -675,69 +767,9 @@ const BlankRoom = (n = 1, settings = DEFAULT_SETTINGS) => ({
   fabrics: [BlankFabric(settings, "Main")],
 });
 const BlankMiscCost = () => ({ id: crypto.randomUUID(), name: "", rate: "", quantity: "" });
+
 /* =========================
-   Order Report Helpers  — CHANGED: qty-based reduction instead of %
-   ========================= */
-function buildOrderRows(rooms, orderReductions = {}) {
-  const effectiveRooms = rooms.filter(r => r.include !== false);
-  const rows = [];
-  effectiveRooms.forEach(room => {
-    const fabrics = room.fabrics && room.fabrics.length ? room.fabrics : [];
-    fabrics.forEach(fab => {
-      const fc = computeFabricCost(room, fab);
-      if (fab.isWallpaper) {
-        const key = `${room.id}__${fab.id}`;
-        // CHANGED: use reductionQty (whole rolls) instead of reductionPct
-        const reductionQty = toNum(orderReductions[key] ?? fab.orderReductionQty ?? 0);
-        const quotedQty = toNum(fab.wallpaperRollQty);
-        const orderQty = Math.max(0, quotedQty - reductionQty);
-        const roundedOrderQty = Math.ceil(orderQty * 10) / 10;
-        rows.push({
-          key, roomName: room.name, fabricLabel: fab.label || 'Fabric',
-          materialName: fab.materialName || 'Wallpaper', type: 'Wallpaper',
-          quotedQty, quotedUnit: 'rolls',
-          orderQty: roundedOrderQty, orderUnit: 'rolls',
-          rate: toNum(fab.wallpaperRollPrice),
-          quotedAmount: toNum(fab.wallpaperRollQty) * toNum(fab.wallpaperRollPrice),
-          orderAmount: roundedOrderQty * toNum(fab.wallpaperRollPrice),
-          reductionQty,
-        });
-        return;
-      }
-      if (fab.blindType) {
-        rows.push({
-          key: `${room.id}__${fab.id}`, roomName: room.name, fabricLabel: fab.label || 'Fabric',
-          materialName: fab.materialName || fab.blindType + ' Blind', type: 'Blind',
-          quotedQty: fc.blindSqFt, quotedUnit: 'sq ft',
-          orderQty: fc.blindSqFt, orderUnit: 'sq ft',
-          rate: fc.blindRate, quotedAmount: fc.clothCost, orderAmount: fc.clothCost,
-          reductionQty: 0,
-        });
-        return;
-      }
-      const key = `${room.id}__${fab.id}`;
-      // CHANGED: use reductionQty (whole metres) instead of reductionPct
-      const reductionQty = toNum(orderReductions[key] ?? fab.orderReductionQty ?? 0);
-      const quotedMeters = fc.metersOfCloth;
-      const orderMeters = Math.max(0, quotedMeters - reductionQty);
-      const roundedOrderMeters = Math.ceil(orderMeters * 2) / 2;
-      rows.push({
-        key, roomName: room.name, fabricLabel: fab.label || 'Fabric',
-        materialName: fab.materialName || 'Fabric',
-        type: fab.isRomanBlind ? 'Roman Blind' : 'Curtain',
-        quotedQty: quotedMeters, quotedUnit: 'm',
-        orderQty: roundedOrderMeters, orderUnit: 'm',
-        rate: toNum(fab.materialPrice),
-        quotedAmount: fc.clothCost,
-        orderAmount: roundedOrderMeters * toNum(fab.materialPrice),
-        reductionQty,
-      });
-    });
-  });
-  return rows;
-}
-/* =========================
-   PDF helpers
+   PDF helpers (unchanged from original)
    ========================= */
 function pdfText(doc, text, x, y, options = {}) {
   const safeText = text == null ? '' : String(text);
@@ -831,8 +863,39 @@ function drawGroupedSummarySection(doc, m, y, rooms, settings, commercials, misc
   const totalFabricEntries=mergeFabricsRoomWise?effectiveRooms.length:effectiveRooms.reduce((s,r)=>s+Math.max(1,(r.fabrics||[]).length),0);
   y=ensureSpace(headerH+totalFabricEntries*baseRowH+60); y=drawTableHeader(y,roomFabricColDefs);
   let globalRowIdx=0;
-  if(mergeFabricsRoomWise){effectiveRooms.forEach((room)=>{const fabrics=room.fabrics&&room.fabrics.length?room.fabrics:[];if(!fabrics.length){const rowH=drawDataRow(y,globalRowIdx++,[room.name||'Room','—','—','—','—'],roomFabricColDefs);y+=rowH;return;}const fabricCosts=fabrics.map((fab)=>({fab,fc:computeFabricCost(room,fab)}));const fabricLabel=fabricCosts.map(({fab})=>fab.label||'Fabric').join(' + ');const totalMeters=fabricCosts.reduce((sum,item)=>sum+Number(item.fc.metersOfCloth||0),0);const totalAmount=fabricCosts.reduce((sum,item)=>sum+Number(item.fc.clothCost||0),0);const rates=Array.from(new Set(fabricCosts.map(({fab})=>Number(fab.materialPrice||0)).filter(rate=>rate>0)));const rateText=rates.length===1?`Rs.${numberWithCommas(rates[0])}`:'Mixed';const rowH=drawDataRow(y,globalRowIdx++,[room.name||'Room',fabricLabel||'Fabric',`${totalMeters.toFixed(2)} m`,rateText,`Rs.${numberWithCommas(Math.round(totalAmount))}`],roomFabricColDefs);y+=rowH;});}
-  else{effectiveRooms.forEach((room)=>{const fabrics=room.fabrics&&room.fabrics.length?room.fabrics:[];if(!fabrics.length){const rowH=drawDataRow(y,globalRowIdx++,[room.name||'Room','—','—','—','—'],roomFabricColDefs);y+=rowH;return;}const fabRowHeights=fabrics.map((fab)=>{const fc=computeFabricCost(room,fab);const nameLines=wrapText(fab.materialName||'N/A',colFabricW-16);const roomLines=wrapText(room.name||'Room',colRoomW2-16);const maxL=Math.max(nameLines.length,roomLines.length,1);return Math.max(baseRowH,maxL*lineH+8);});const totalRoomH=fabRowHeights.reduce((s,h)=>s+h,0);const isAlt=globalRowIdx%2===0;const roomStartY=y;fabrics.forEach((fab,fi)=>{const fc=computeFabricCost(room,fab);const rowH=fabRowHeights[fi];const ry=y+fabRowHeights.slice(0,fi).reduce((s,h)=>s+h,0);doc.setFillColor(isAlt?255:250,isAlt?255:250,isAlt?255:250);doc.rect(colFabricX,ry,tw-colRoomW2,rowH,'F');doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(colFabricX,ry,tw-colRoomW2,rowH,'S');[colClothX,colRateX2,colAmountX2].forEach(x=>doc.line(x,ry,x,ry+rowH));doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(30,30,30);const nameText=fab.label||'Fabric';wrapText(nameText,colFabricW-16).forEach((l,li)=>pdfText(doc,l,colFabricX+8,ry+lineH+li*lineH));rightText(fab.isWallpaper?`${Number(fc.rollQty||0).toFixed(2)} rolls`:(fc.blindType?`${Number(fc.blindSqFt||0).toFixed(2)} sq ft`:`${fc.metersOfCloth.toFixed(2)} m`),colClothX+colClothW-8,ry+lineH);rightText(fab.isWallpaper?`Rs.${numberWithCommas(fc.rollPrice||0)}`:`Rs.${numberWithCommas(fc.blindType?fc.blindRate:(fab.materialPrice||0))}`,colRateX2+colRateW-8,ry+lineH);rightText(`Rs.${numberWithCommas(Math.round(fc.clothCost))}`,colAmountX2+colAmountW-8,ry+lineH);});doc.setFillColor(isAlt?255:250,isAlt?255:250,isAlt?255:250);doc.rect(colRoomX2,roomStartY,colRoomW2,totalRoomH,'F');doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(colRoomX2,roomStartY,colRoomW2,totalRoomH,'S');doc.line(colFabricX,roomStartY,colFabricX,roomStartY+totalRoomH);doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(30,30,30);const roomLines=wrapText(room.name||'Room',colRoomW2-16);const roomTextHeight=roomLines.length*lineH;const roomTextStartY=roomStartY+(totalRoomH-roomTextHeight)/2+lineH-2;roomLines.forEach((l,li)=>{pdfText(doc,l,colRoomX2+colRoomW2/2,roomTextStartY+li*lineH,{align:'center'});});y+=totalRoomH;globalRowIdx++;});}
+  effectiveRooms.forEach((room)=>{
+    const fabrics=room.fabrics&&room.fabrics.length?room.fabrics:[];
+    if(!fabrics.length){const rowH=drawDataRow(y,globalRowIdx++,[room.name||'Room','—','—','—','—'],roomFabricColDefs);y+=rowH;return;}
+    if(mergeFabricsRoomWise){
+      const fabricCosts=fabrics.map((fab)=>({fab,fc:computeFabricCost(room,fab)}));
+      const fabricLabel=fabricCosts.map(({fab})=>fab.label||'Fabric').join(' + ');
+      const totalMeters=fabricCosts.reduce((sum,item)=>sum+Number(item.fc.metersOfCloth||0),0);
+      const totalAmount=fabricCosts.reduce((sum,item)=>sum+Number(item.fc.clothCost||0),0);
+      const rates=Array.from(new Set(fabricCosts.map(({fab})=>Number(fab.materialPrice||0)).filter(rate=>rate>0)));
+      const rateText=rates.length===1?`Rs.${numberWithCommas(rates[0])}`:'Mixed';
+      const rowH=drawDataRow(y,globalRowIdx++,[room.name||'Room',fabricLabel||'Fabric',`${totalMeters.toFixed(2)} m`,rateText,`Rs.${numberWithCommas(Math.round(totalAmount))}`],roomFabricColDefs);
+      y+=rowH;
+    } else {
+      const fabRowHeights=fabrics.map((fab)=>{const fc=computeFabricCost(room,fab);const nameLines=wrapText(fab.materialName||'N/A',colFabricW-16);const roomLines=wrapText(room.name||'Room',colRoomW2-16);const maxL=Math.max(nameLines.length,roomLines.length,1);return Math.max(baseRowH,maxL*lineH+8);});
+      const totalRoomH=fabRowHeights.reduce((s,h)=>s+h,0);
+      const isAlt=globalRowIdx%2===0;
+      const roomStartY=y;
+      fabrics.forEach((fab,fi)=>{
+        const fc=computeFabricCost(room,fab);const rowH=fabRowHeights[fi];const ry=y+fabRowHeights.slice(0,fi).reduce((s,h)=>s+h,0);
+        doc.setFillColor(isAlt?255:250,isAlt?255:250,isAlt?255:250);doc.rect(colFabricX,ry,tw-colRoomW2,rowH,'F');doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(colFabricX,ry,tw-colRoomW2,rowH,'S');[colClothX,colRateX2,colAmountX2].forEach(x=>doc.line(x,ry,x,ry+rowH));
+        doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(30,30,30);
+        const nameText=fab.label||'Fabric';wrapText(nameText,colFabricW-16).forEach((l,li)=>pdfText(doc,l,colFabricX+8,ry+lineH+li*lineH));
+        rightText(fab.isWallpaper?`${Number(fc.rollQty||0).toFixed(2)} rolls`:(fc.blindType?`${Number(fc.blindSqFt||0).toFixed(2)} sq ft`:`${fc.metersOfCloth.toFixed(2)} m`),colClothX+colClothW-8,ry+lineH);
+        rightText(fab.isWallpaper?`Rs.${numberWithCommas(fc.rollPrice||0)}`:`Rs.${numberWithCommas(fc.blindType?fc.blindRate:(fab.materialPrice||0))}`,colRateX2+colRateW-8,ry+lineH);
+        rightText(`Rs.${numberWithCommas(Math.round(fc.clothCost))}`,colAmountX2+colAmountW-8,ry+lineH);
+      });
+      doc.setFillColor(isAlt?255:250,isAlt?255:250,isAlt?255:250);doc.rect(colRoomX2,roomStartY,colRoomW2,totalRoomH,'F');doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(colRoomX2,roomStartY,colRoomW2,totalRoomH,'S');doc.line(colFabricX,roomStartY,colFabricX,roomStartY+totalRoomH);
+      doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(30,30,30);
+      const roomLines=wrapText(room.name||'Room',colRoomW2-16);const roomTextHeight=roomLines.length*lineH;const roomTextStartY=roomStartY+(totalRoomH-roomTextHeight)/2+lineH-2;
+      roomLines.forEach((l,li)=>{pdfText(doc,l,colRoomX2+colRoomW2/2,roomTextStartY+li*lineH,{align:'center'});});
+      y+=totalRoomH;globalRowIdx++;
+    }
+  });
   {const rowH=baseRowH;doc.setFillColor(...pdfColor('#FFF7ED'));doc.rect(m,y,tw,rowH,'F');doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(m,y,tw,rowH,'S');doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(30,30,30);pdfText(doc,'Fabric Sub-Total',m+8,y+14);rightText(`Rs.${numberWithCommas(fabricTotal)}`,m+tw-8,y+14);y+=rowH;}
   if(hasDiscount){const rowH=baseRowH;const dl=discountType==="percent"?`Discount (${Number(discountValue||0)}%)`:'Discount';doc.setFillColor(255,240,240);doc.rect(m,y,tw,rowH,'F');doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(m,y,tw,rowH,'S');doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(180,30,30);pdfText(doc,dl,m+8,y+14);rightText(`-Rs.${numberWithCommas(discountAmount)}`,m+tw-8,y+14);y+=rowH;doc.setFillColor(...pdfColor('#E8F5E9'));doc.rect(m,y,tw,rowH,'F');doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(m,y,tw,rowH,'S');doc.setFont('helvetica','bold');doc.setFontSize(9.5);doc.setTextColor(20,100,40);pdfText(doc,'Net Fabric Total (after discount)',m+8,y+15);rightText(`Rs.${numberWithCommas(netFabricTotal)}`,m+tw-8,y+15);y+=rowH;}
   y+=12;y=ensureSpace(50);y=drawSectionHeader(doc,m,y,'OTHER COSTS');
@@ -902,76 +965,7 @@ async function generateFullPDF(rooms, meta, settings, miscellaneousCosts = [], m
   drawFinalSummaryPanel(doc, m, y, meta, all.summary, sigDataURL);
   return doc;
 }
-async function generateOrderPDF(orderRows, meta) {
-  const logoDataURL = await imageToDataURL(meta.company.logoUrl);
-  const m = 36, pageWidth = 595.28;
-  const rowH = 22, headerH = 22, topH = 90, sectionH = 34, bottomPad = 40;
-  const pageHeight = Math.max(842, topH + sectionH + headerH + orderRows.length * rowH + 100 + bottomPad);
-  const doc = new jsPDF({ orientation: 'p', unit: 'pt', format: [pageWidth, pageHeight] });
-  const tw = pageWidth - 2 * m;
-  drawHeader(doc, m, meta, logoDataURL);
-  let y = topH + m;
-  doc.setFillColor(...pdfColor(BRAND.header)); doc.setDrawColor(...pdfColor(BRAND.grid));
-  doc.roundedRect(m, y, tw, 24, 4, 4, "FD");
-  doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(...pdfColor(BRAND.primary));
-  pdfText(doc, `ORDER REPORT — ${meta.quoteNo || 'DRAFT'} — ${meta.customerName || ''}`, m + 10, y + 16);
-  y += 30;
-  const colRoom = 95;
-  const colFabric = 110;
-  const colType = 85;
-  const colQQuoted = 95;
-  const colQOrder = 95;
-  const colRed = tw - colRoom - colFabric - colType - colQQuoted - colQOrder;
-  const cols = [
-    { title: 'Room', w: colRoom, x: m, align: 'left' },
-    { title: 'Fabric', w: colFabric, x: m + colRoom, align: 'left' },
-    { title: 'Type', w: colType, x: m + colRoom + colFabric, align: 'left' },
-    { title: 'Quoted', w: colQQuoted, x: m + colRoom + colFabric + colType, align: 'right' },
-    { title: 'Order', w: colQOrder, x: m + colRoom + colFabric + colType + colQQuoted, align: 'right' },
-    { title: 'Less', w: colRed, x: m + colRoom + colFabric + colType + colQQuoted + colQOrder, align: 'right' },
-  ];
-  doc.setFillColor(...pdfColor(BRAND.header)); doc.setDrawColor(...pdfColor(BRAND.grid));
-  doc.rect(m, y, tw, headerH, 'FD');
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(80, 80, 80);
-  cols.forEach(col => {
-    const s = col.title;
-    if (col.align === 'right') doc.text(s, col.x + col.w - 6 - doc.getTextWidth(s), y + 14);
-    else pdfText(doc, s, col.x + 6, y + 14);
-  });
-  cols.slice(0, -1).forEach(col => doc.line(col.x + col.w, y, col.x + col.w, y + headerH));
-  y += headerH;
-  orderRows.forEach((row, idx) => {
-    const bg = idx % 2 === 0 ? [255, 255, 255] : [250, 250, 250];
-    doc.setFillColor(...bg); doc.rect(m, y, tw, rowH, 'F');
-    doc.setDrawColor(...pdfColor(BRAND.grid)); doc.rect(m, y, tw, rowH, 'S');
-    cols.slice(0, -1).forEach(col => doc.line(col.x + col.w, y, col.x + col.w, y + rowH));
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
-    const cells = [
-      row.roomName,
-      row.fabricLabel,
-      row.type,
-      `${Number(row.quotedQty || 0).toFixed(2)} ${row.quotedUnit}`,
-      `${Number(row.orderQty || 0).toFixed(2)} ${row.orderUnit}`,
-      row.type === 'Blind' ? '—' : `${Number(row.reductionQty || 0).toFixed(2)} ${row.orderUnit}`,
-    ];
-    const fitCell = (value, maxChars) => {
-      const s = String(value ?? '');
-      return s.length > maxChars ? `${s.slice(0, Math.max(0, maxChars - 3))}...` : s;
-    };
-    cells.forEach((cell, i) => {
-      const col = cols[i];
-      const maxChars = i === 0 ? 16 : i === 1 ? 18 : i === 2 ? 14 : i === 3 ? 14 : i === 4 ? 14 : 18;
-      const s = fitCell(cell, maxChars);
-      if (col.align === 'right') {
-        doc.text(s, col.x + col.w - 8 - doc.getTextWidth(s), y + 14);
-      } else {
-        pdfText(doc, s, col.x + 6, y + 14);
-      }
-    });
-    y += rowH;
-  });
-  return doc;
-}
+
 /* =========================
    Small components
    ========================= */
@@ -987,12 +981,92 @@ const UnitInput = React.memo(function UnitInput({ value, onChange, onBlur, place
 const Pill = React.memo(function Pill({ children }) { return <span className="pill">{children}</span>; });
 function StatusBadge({ status }) {
   const s = STATUS_COLORS[status] || STATUS_COLORS.Draft;
+  return <span className="status-badge" style={{ background: s.bg, color: s.text, borderColor: s.border }}>{status || 'Draft'}</span>;
+}
+
+function LoginScreen({ onLogin }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+
+    const found = AUTH_USERS.find(
+      user => user.username === username.trim() && user.password === password
+    );
+
+    if (!found) {
+      setError("Invalid username or password.");
+      return;
+    }
+
+    const sessionUser = {
+      username: found.username,
+      role: found.role,
+      label: found.label,
+    };
+
+    localStorage.setItem(LS_AUTH_USER_KEY, JSON.stringify(sessionUser));
+    onLogin(sessionUser);
+  };
+
   return (
-    <span className="status-badge" style={{ background: s.bg, color: s.text, borderColor: s.border }}>
-      {status || 'Draft'}
-    </span>
+    <div className="auth-page">
+      <div className="auth-card">
+        <div className="auth-brand">
+          {BRAND.logoUrl && (
+            <img className="auth-logo" src={BRAND.logoUrl} alt="Themes Furnishings & Decor" />
+          )}
+          <div>
+            <div className="auth-title">Quotation App Login</div>
+            <div className="auth-subtitle">Themes Furnishings & Decor</div>
+          </div>
+        </div>
+
+        <form className="auth-form" onSubmit={handleSubmit}>
+          {error && <div className="auth-error">{error}</div>}
+
+          <Field label="Username">
+            <input
+              className="input"
+              value={username}
+              onChange={e => {
+                setUsername(e.target.value);
+                setError("");
+              }}
+              placeholder="admin or staff"
+              autoFocus
+            />
+          </Field>
+
+          <Field label="Password">
+            <input
+              className="input"
+              type="password"
+              value={password}
+              onChange={e => {
+                setPassword(e.target.value);
+                setError("");
+              }}
+              placeholder="Enter password"
+            />
+          </Field>
+
+          <button className="btn btn-primary" type="submit" style={{ justifyContent: "center" }}>
+            Login
+          </button>
+        </form>
+
+        <div className="auth-help">
+          Default logins: <strong>admin / admin123</strong> and <strong>staff / staff123</strong>.
+          Change these in <code>AUTH_USERS</code> before real use.
+        </div>
+      </div>
+    </div>
   );
 }
+
 /* =========================
    FabricRow sub-component
    ========================= */
@@ -1027,8 +1101,6 @@ const FabricRow = React.memo(function FabricRow({ fabric, room, settings, onChan
             <Field label="Wallpaper Name"><input className="input" value={fabric.materialName || ""} onChange={e => onChange({ materialName: e.target.value })} placeholder="e.g. Floral Wallpaper" /></Field>
             <Field label="Quantity" hint="rolls"><UnitInput unit="rolls" value={fabric.wallpaperRollQty ?? ""} onChange={e => onChange({ wallpaperRollQty: e.target.value })} inputMode="decimal" placeholder="e.g. 3" /></Field>
             <Field label="Price / Roll"><UnitInput unit="Rs" value={fabric.wallpaperRollPrice ?? ""} onChange={e => onChange({ wallpaperRollPrice: e.target.value })} inputMode="decimal" placeholder="e.g. 2500" /></Field>
-            {/* CHANGED: rolls less to order (whole number) */}
-            <Field label="Order Reduction" hint="rolls less to order"><UnitInput unit="rolls" value={fabric.orderReductionQty ?? ""} onChange={e => onChange({ orderReductionQty: e.target.value })} inputMode="decimal" placeholder="0" /></Field>
           </>
         ) : fabric.blindType ? (
           <>
@@ -1075,11 +1147,8 @@ const FabricRow = React.memo(function FabricRow({ fabric, room, settings, onChan
                 {(settings.tracks || []).map(t => <option key={t.id} value={t.id}>{t.label} (Rs.{t.ratePerFt}/ft)</option>)}
               </select>
             </Field>
-            <Field label="Material Name"><input className="input" value={fabric.materialName || ""} onChange={e => onChange({ materialName: e.target.value })} placeholder="e.g. Velvet, Sheer" /></Field>
             <Field label="Price / m"><UnitInput unit="Rs/m" value={fabric.materialPrice} onChange={e => onChange({ materialPrice: e.target.value })} inputMode="decimal" placeholder="e.g. 350" /></Field>
             <Field label="Cloth" hint={`auto: ${fc.metersOfCloth.toFixed(2)} m`}><UnitInput unit="m" value={fabric.clothMeters ?? ""} onChange={e => onChange({ clothMeters: e.target.value })} inputMode="decimal" placeholder={fc.metersOfCloth.toFixed(2)} /></Field>
-            {/* CHANGED: metres less to actually order (whole number) */}
-            <Field label="Order Reduction" hint="metres less to actually order"><UnitInput unit="m" value={fabric.orderReductionQty ?? ""} onChange={e => onChange({ orderReductionQty: e.target.value })} inputMode="decimal" placeholder="0" /></Field>
             <Field label="Stitching">
               <select className="select" value={fabric.stitching?.id || ""} onChange={e => onChange({ stitching: settings.stitchingTypes.find(s => s.id === e.target.value) })}>
                 {settings.stitchingTypes.map(s => <option key={s.id} value={s.id}>{s.label} (Rs.{s.ratePerPanel}/panel)</option>)}
@@ -1096,6 +1165,7 @@ const FabricRow = React.memo(function FabricRow({ fabric, room, settings, onChan
     </div>
   );
 });
+
 /* =========================
    Room Card
    ========================= */
@@ -1166,143 +1236,700 @@ const RoomCard = React.memo(function RoomCard({ room, onClone, onDelete, updateR
     </div>
   );
 });
+
 /* =========================
-   Order Report Tab  — CHANGED: qty-based UI
+   Order Processing Tab (REVISED)
+   - After saving, shows "Process Order → Fabric Processing" CTA
+   - Merges same fabric names' quantities before sending to global FP store
    ========================= */
-function OrderReportTab({ rooms, quoteMeta, quoteNo }) {
-  const [orderReductions, setOrderReductions] = useState({});
-  const orderRows = useMemo(() => buildOrderRows(rooms, orderReductions), [rooms, orderReductions]);
-  const totalQuotedAmt = orderRows.reduce((s, r) => s + r.quotedAmount, 0);
-  const totalOrderAmt = orderRows.reduce((s, r) => s + r.orderAmount, 0);
-  const savings = totalQuotedAmt - totalOrderAmt;
-  const setReduction = (key, val) => setOrderReductions(prev => ({ ...prev, [key]: val }));
-  const handleDownloadPDF = async () => {
-    try {
-      const meta = { ...quoteMeta, quoteNo };
-      const doc = await generateOrderPDF(orderRows, meta);
-      doc.save(`Order_${quoteMeta.customerName || 'Customer'}_${quoteNo || 'Draft'}.pdf`);
-    } catch (err) {
-      console.error(err);
-      alert("Could not generate Order PDF.");
+function OrderProcessingTab({ rooms, quoteMeta, quoteNo, currentQuoteStatus, allQuotes, onSaveOrderData, onProcessToFabricProcessing }) {
+  const savedRecord = allQuotes?.[quoteNo];
+  const isApproved = currentQuoteStatus === 'Approved' || savedRecord?.status === 'Approved';
+
+  const defaultOrderItems = useMemo(() => {
+    const items = [];
+    rooms.filter(r => r.include !== false).forEach(room => {
+      (room.fabrics || []).forEach(fab => {
+        const fc = computeFabricCost(room, fab);
+        let typeLabel = 'Curtain';
+        if (fab.isWallpaper) typeLabel = 'Wallpaper';
+        else if (fab.blindType) typeLabel = fab.blindType.charAt(0).toUpperCase() + fab.blindType.slice(1) + ' Blind';
+        else if (fab.isRomanBlind) typeLabel = 'Roman Blind';
+
+        let defaultQty = '';
+        if (fab.isWallpaper) defaultQty = String(fc.rollQty || '');
+        else if (fab.blindType) defaultQty = String(Number(fc.blindSqFt || 0).toFixed(2));
+        else defaultQty = String(fc.metersOfCloth.toFixed(2));
+
+        items.push({
+          id: `${room.id}__${fab.id}`,
+          fabricLabel: fab.label || '',
+          roomName: room.name || 'Room',
+          fabricName: fab.materialName || '',
+          supplier: '',
+          metersToOrder: defaultQty,
+          panels: String(Math.round(fc.panels) || ''),
+          clothWidthInch: '',
+          ratePerMeter: String(fab.materialPrice || ''),
+          type: typeLabel,
+          unit: fab.isWallpaper ? 'rolls' : fab.blindType ? 'sq ft' : 'm',
+          notes: '',
+        });
+      });
+    });
+    return items;
+  }, [rooms]);
+
+  const [orderItems, setOrderItems] = useState(() => {
+    const saved = savedRecord?.orderProcessing?.items;
+    if (saved && saved.length) {
+      const savedMap = Object.fromEntries(saved.map(i => [i.id, i]));
+      return defaultOrderItems.map(di => savedMap[di.id] ? { ...di, ...savedMap[di.id] } : di);
     }
+    return defaultOrderItems;
+  });
+  const [advancePayments, setAdvancePayments] = useState(() => {
+    const saved = savedRecord?.orderProcessing?.advancePayments;
+    return Array.isArray(saved) ? saved : [];
+  });
+  const [newAdvanceAmt, setNewAdvanceAmt] = useState('');
+  const [newAdvanceNote, setNewAdvanceNote] = useState('');
+  const [savedSuccessfully, setSavedSuccessfully] = useState(false);
+
+  useEffect(() => {
+    setOrderItems(prev => {
+      const prevMap = Object.fromEntries(prev.map(i => [i.id, i]));
+      return defaultOrderItems.map(di => prevMap[di.id] ? { ...di, ...prevMap[di.id], type: di.type, unit: di.unit } : di);
+    });
+  }, [defaultOrderItems]);
+
+  const grandTotal = useMemo(() => savedRecord?.snapshot?.summary?.finalTotal || 0, [savedRecord]);
+  const totalAdvance = useMemo(() => advancePayments.reduce((s, p) => s + toNum(p.amount), 0), [advancePayments]);
+  const balance = grandTotal - totalAdvance;
+  const pctPaid = grandTotal > 0 ? Math.min(100, (totalAdvance / grandTotal) * 100) : 0;
+
+  const updateItem = (id, patch) => setOrderItems(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i));
+  const addItem = () => setOrderItems(prev => [...prev, { id: crypto.randomUUID(), fabricLabel: 'Extra', roomName: '', fabricName: '', supplier: '', metersToOrder: '', panels: '', clothWidthInch: '', ratePerMeter: '', type: 'Curtain', unit: 'm', notes: '' }]);
+  const removeItem = (id) => setOrderItems(prev => prev.filter(i => i.id !== id));
+
+  const addAdvance = () => {
+    const amt = toNum(newAdvanceAmt);
+    if (!amt) return;
+    setAdvancePayments(prev => [...prev, { id: crypto.randomUUID(), amount: amt, note: newAdvanceNote || 'Advance', date: new Date().toLocaleDateString('en-IN') }]);
+    setNewAdvanceAmt(''); setNewAdvanceNote('');
   };
-  return (
-    <div className="box">
-      <div className="box-header">
-        <h3><ShoppingCart size={15} style={{ marginRight: 4 }} /> Order Report — What to Actually Order</h3>
+  const removeAdvance = (id) => setAdvancePayments(prev => prev.filter(p => p.id !== id));
+
+  const handleSave = () => {
+    onSaveOrderData({ items: orderItems, advancePayments });
+    setSavedSuccessfully(true);
+  };
+
+  const handleProcessOrder = () => {
+    // Merge same fabric names across items before pushing to global FP
+    onProcessToFabricProcessing(orderItems, quoteNo, quoteMeta.customerName || '');
+  };
+
+  const totalOrderValue = orderItems.reduce((s, item) => s + (toNum(item.metersToOrder) * toNum(item.ratePerMeter)), 0);
+
+  if (!isApproved) {
+    return (
+      <div className="box">
+        <div className="box-header"><h3><Package size={15} style={{ marginRight: 4 }} /> Order Processing</h3></div>
+        <div className="box-body">
+          <div className="op-not-approved">
+            <div className="op-not-approved-icon">🔒</div>
+            <div className="op-not-approved-title">Quote Not Yet Approved</div>
+            <div className="op-not-approved-sub">
+              Order Processing is available only after a quote is <strong>Approved</strong>.<br /><br />
+              Go to <strong>Saved Quotes</strong> and change the status of quote <strong>{quoteNo || '—'}</strong> to <strong>Approved</strong>, then return here.
+            </div>
+            <div style={{ marginTop: 24, display: 'flex', justifyContent: 'center' }}>
+              <StatusBadge status={currentQuoteStatus || savedRecord?.status || 'Draft'} />
+            </div>
+          </div>
+        </div>
       </div>
-      <div className="box-body">
-        <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#92400E', marginBottom: 16 }}>
-          {/* CHANGED: updated description to reflect whole-number qty */}
-          The quote gives customers a higher cloth quantity (with allowances). Use <strong>Order Reduction</strong> per fabric to enter how many metres (or rolls) less you actually need to order. The table below shows your real purchase quantities and costs.
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="op-banner">
+        <div className="op-banner-icon">✅</div>
+        <div className="op-banner-text">
+          <div className="op-banner-title">Quote Approved — Processing Order</div>
+          <div className="op-banner-sub">{quoteNo} · {quoteMeta.customerName || 'Customer'} · {quoteMeta.projectTitle || ''}</div>
         </div>
-        <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-          <div className="dash-kpi" style={{ flex: 1, minWidth: 140 }}>
-            <div className="dash-kpi-label">Quoted Fabric Amount</div>
-            <div className="dash-kpi-value">{currency(totalQuotedAmt)}</div>
+      </div>
+
+      {/* Payment Summary */}
+      <Box title="Payment Summary">
+        <div style={{ marginBottom: 16 }}>
+          <div className="op-financials">
+            <div className="op-fin-card quote">
+              <div className="op-fin-label">Quote Value</div>
+              <div className="op-fin-value">{currency(grandTotal)}</div>
+              <div className="op-fin-sub">Final approved amount</div>
+            </div>
+            <div className="op-fin-card advance">
+              <div className="op-fin-label">Advance Received</div>
+              <div className="op-fin-value">{currency(totalAdvance)}</div>
+              <div className="op-fin-sub">{advancePayments.length} payment{advancePayments.length !== 1 ? 's' : ''}</div>
+            </div>
+            <div className={`op-fin-card balance${balance <= 0 ? ' settled' : ''}`}>
+              <div className="op-fin-label">{balance <= 0 ? 'Fully Settled ✓' : 'Balance Due'}</div>
+              <div className="op-fin-value">{currency(Math.abs(balance))}</div>
+              <div className="op-fin-sub">{balance > 0 ? 'Amount pending from customer' : balance < 0 ? `Excess: ${currency(Math.abs(balance))}` : 'All paid!'}</div>
+            </div>
           </div>
-          <div className="dash-kpi" style={{ flex: 1, minWidth: 140 }}>
-            <div className="dash-kpi-label">Actual Order Amount</div>
-            <div className="dash-kpi-value">{currency(totalOrderAmt)}</div>
-          </div>
-          <div className="dash-kpi" style={{ flex: 1, minWidth: 140 }}>
-            <div className="dash-kpi-label">Margin on Fabric</div>
-            <div className="dash-kpi-value" style={{ color: savings >= 0 ? '#059669' : '#DC2626' }}>{currency(savings)}</div>
-            <div className="dash-kpi-sub">{totalQuotedAmt > 0 ? ((savings / totalQuotedAmt) * 100).toFixed(1) + '% margin' : '—'}</div>
+          <div style={{ marginTop: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--muted)', fontWeight: 700, marginBottom: 4 }}>
+              <span>Payment Progress</span><span>{pctPaid.toFixed(1)}% received</span>
+            </div>
+            <div className="op-progress-bar-bg">
+              <div className="op-progress-bar-fill" style={{ width: `${pctPaid}%`, background: pctPaid >= 100 ? '#059669' : pctPaid >= 50 ? '#F59E0B' : 'var(--primary)' }} />
+            </div>
           </div>
         </div>
-        {orderRows.length === 0 ? (
-          <div className="empty-box">No fabric entries yet. Add rooms and fabrics in the Quote tab.</div>
-        ) : (
+
+        {/* Record advance */}
+        <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 12, padding: '14px 16px', marginBottom: 12 }}>
+          <div style={{ fontWeight: 800, fontSize: 13, color: '#065F46', marginBottom: 10 }}>Record Advance Payment</div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div className="field" style={{ flex: '0 0 160px' }}>
+              <label className="field-label">Amount (Rs)</label>
+              <input className="input op-advance-input" type="number" inputMode="decimal" placeholder="e.g. 25000" value={newAdvanceAmt} onChange={e => setNewAdvanceAmt(e.target.value)} onFocus={e => e.currentTarget.select()} style={{ borderColor: '#BBF7D0' }} />
+            </div>
+            <div className="field" style={{ flex: 1, minWidth: 180 }}>
+              <label className="field-label">Note / Reference</label>
+              <input className="input" placeholder="e.g. Cheque #1234, UPI, Cash" value={newAdvanceNote} onChange={e => setNewAdvanceNote(e.target.value)} style={{ borderColor: '#BBF7D0' }} />
+            </div>
+            <button className="btn btn-primary btn-sm" onClick={addAdvance} style={{ background: '#059669', borderColor: '#059669', height: 38 }}><Plus size={14} /> Add Payment</button>
+          </div>
+        </div>
+
+        {advancePayments.length > 0 && (
           <div style={{ overflowX: 'auto' }}>
-            <table className="order-report-table">
-              <thead>
-                <tr>
-                  <th>Room</th>
-                  <th>Fabric / Label</th>
-                  <th>Material</th>
-                  <th>Type</th>
-                  <th style={{ textAlign: 'right' }}>Quoted Qty</th>
-                  {/* CHANGED: column header */}
-                  <th style={{ textAlign: 'right' }}>Reduction (qty)</th>
-                  <th style={{ textAlign: 'right' }}>To Order</th>
-                  <th style={{ textAlign: 'right' }}>Order Amount</th>
-                </tr>
-              </thead>
+            <table className="op-summary-table">
+              <thead><tr><th>#</th><th>Date</th><th>Note / Reference</th><th style={{ textAlign: 'right' }}>Amount</th><th style={{ textAlign: 'center' }}>Remove</th></tr></thead>
               <tbody>
-                {orderRows.map((row) => (
-                  <tr key={row.key}>
-                    <td style={{ fontWeight: 700 }}>{row.roomName}</td>
-                    <td>{row.fabricLabel}</td>
-                    <td style={{ color: 'var(--muted)' }}>{row.materialName}</td>
-                    <td>
-                      <span style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', borderRadius: 999, padding: '2px 8px', fontSize: 11, fontWeight: 800 }}>
-                        {row.type}
-                      </span>
-                    </td>
-                    <td style={{ textAlign: 'right', color: 'var(--muted)' }}>
-                      {row.quotedQty.toFixed(2)} {row.quotedUnit}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      {row.type === 'Blind' ? (
-                        <span style={{ color: 'var(--muted)', fontSize: 12 }}>N/A</span>
-                      ) : (
-                        /* CHANGED: plain number input, no % cap, no % symbol */
-                        <input
-                          type="number"
-                          className="reduction-input"
-                          min="0"
-                          step="0.5"
-                          value={orderReductions[row.key] ?? row.reductionQty ?? 0}
-                          onChange={e => setReduction(row.key, Math.max(0, Number(e.target.value)))}
-                          style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', fontSize: 12, textAlign: 'right', width: 72 }}
-                        />
-                      )}
-                    </td>
-                    <td style={{ textAlign: 'right', fontWeight: 800, color: 'var(--primary)' }}>
-                      {row.orderQty.toFixed(2)} {row.orderUnit}
-                    </td>
-                    <td style={{ textAlign: 'right', fontWeight: 800 }}>
-                      {currency(row.orderAmount)}
-                    </td>
+                {advancePayments.map((p, i) => (
+                  <tr key={p.id}>
+                    <td style={{ fontWeight: 700, color: 'var(--muted)' }}>{i + 1}</td>
+                    <td style={{ color: 'var(--muted)', fontSize: 12 }}>{p.date}</td>
+                    <td style={{ fontWeight: 600 }}>{p.note || '—'}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 800, color: '#059669' }}>{currency(p.amount)}</td>
+                    <td style={{ textAlign: 'center' }}><button className="btn btn-danger btn-sm" onClick={() => removeAdvance(p.id)}><Trash2 size={12} /></button></td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr style={{ background: '#FFF5FA' }}>
-                  <td colSpan={4} style={{ fontWeight: 900, padding: '10px 12px' }}>Total</td>
-                  <td style={{ textAlign: 'right', fontWeight: 700, padding: '10px 12px', color: 'var(--muted)' }}>{currency(totalQuotedAmt)}</td>
-                  <td></td>
-                  <td></td>
-                  <td style={{ textAlign: 'right', fontWeight: 900, padding: '10px 12px', color: 'var(--primary)', fontSize: 15 }}>{currency(totalOrderAmt)}</td>
+                <tr style={{ background: '#F0FDF4' }}>
+                  <td colSpan={3} style={{ fontWeight: 900, padding: '10px 12px', color: '#065F46' }}>Total Advance</td>
+                  <td style={{ textAlign: 'right', fontWeight: 900, color: '#059669', fontSize: 15, padding: '10px 12px' }}>{currency(totalAdvance)}</td>
+                  <td />
+                </tr>
+                <tr style={{ background: balance <= 0 ? '#ECFDF5' : '#FFF7ED' }}>
+                  <td colSpan={3} style={{ fontWeight: 900, padding: '10px 12px', color: balance <= 0 ? '#065F46' : '#D97706' }}>{balance <= 0 ? '✓ Fully Settled' : 'Balance Remaining'}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 900, fontSize: 16, padding: '10px 12px', color: balance <= 0 ? '#059669' : '#D97706' }}>{currency(Math.abs(balance))}</td>
+                  <td />
                 </tr>
               </tfoot>
             </table>
           </div>
         )}
-        <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
-          <button className="btn btn-outline" onClick={handleDownloadPDF}>
-            <Download size={15} /> Download Order PDF
+      </Box>
+
+      {/* Fabric & Material Orders */}
+      <Box title="Fabric & Material Orders">
+        <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#92400E', marginBottom: 16 }}>
+          Fill in the actual quantities, supplier names and rates for each fabric. Then save and click <strong>"Process Order → Fabric Processing"</strong> to send everything to the global Fabric Processing checklist.
+        </div>
+        <div className="op-order-items">
+          {orderItems.map((item, idx) => (
+            <div key={item.id} className="op-item-card">
+              <div className="op-item-header">
+                <span className="op-item-badge">{item.fabricLabel || `Item ${idx + 1}`}</span>
+                <span className="op-item-room" style={{ marginLeft: 4 }}>{item.roomName || ''}</span>
+                <span style={{ marginLeft: 8, background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', borderRadius: 999, padding: '2px 8px', fontSize: 11, fontWeight: 800 }}>{item.type}</span>
+                {toNum(item.metersToOrder) > 0 && toNum(item.ratePerMeter) > 0 && (
+                  <span className="op-item-cost">{currency(toNum(item.metersToOrder) * toNum(item.ratePerMeter))}</span>
+                )}
+                <button className="btn-remove-fabric" onClick={() => removeItem(item.id)} title="Remove item" style={{ marginLeft: 'auto' }}>×</button>
+              </div>
+              <div className="op-item-grid">
+                <Field label="Fabric / Material Name"><input className="input" value={item.fabricName || ''} onChange={e => updateItem(item.id, { fabricName: e.target.value })} placeholder="e.g. Velvet Maroon" /></Field>
+                <Field label="Supplier Name"><input className="input" value={item.supplier || ''} onChange={e => updateItem(item.id, { supplier: e.target.value })} placeholder="e.g. Arvind Mills" /></Field>
+                <Field label={`Qty to Order (${item.unit})`}><UnitInput unit={item.unit} value={item.metersToOrder || ''} onChange={e => updateItem(item.id, { metersToOrder: e.target.value })} inputMode="decimal" placeholder={item.unit === 'm' ? 'e.g. 12' : item.unit === 'rolls' ? 'e.g. 3' : 'e.g. 15'} /></Field>
+                {item.unit === 'm' && <Field label="Panels to Cut"><UnitInput unit="pcs" value={item.panels || ''} onChange={e => updateItem(item.id, { panels: e.target.value })} inputMode="decimal" placeholder="e.g. 4" /></Field>}
+                {item.unit === 'm' && <Field label="Cloth Width" hint="inches"><UnitInput unit="in" value={item.clothWidthInch || ''} onChange={e => updateItem(item.id, { clothWidthInch: e.target.value })} inputMode="decimal" placeholder='e.g. 54"' /></Field>}
+                <Field label={`Rate / ${item.unit}`}><UnitInput unit="Rs" value={item.ratePerMeter || ''} onChange={e => updateItem(item.id, { ratePerMeter: e.target.value })} inputMode="decimal" placeholder="e.g. 350" /></Field>
+              </div>
+              <div className="op-item-notes">
+                <input className="input" value={item.notes || ''} onChange={e => updateItem(item.id, { notes: e.target.value })} placeholder="Notes / special instructions for this fabric..." style={{ fontSize: 12 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, flexWrap: 'wrap', gap: 10 }}>
+          <button className="btn btn-outline btn-sm" onClick={addItem}><Plus size={13} /> Add Item</button>
+          {totalOrderValue > 0 && <div style={{ fontWeight: 900, fontSize: 15, color: 'var(--primary)' }}>Total Purchase Value: {currency(totalOrderValue)}</div>}
+        </div>
+
+        {/* Order Summary table */}
+        {orderItems.length > 0 && (
+          <div style={{ marginTop: 20 }}>
+            <div style={{ fontWeight: 800, fontSize: 13, color: 'var(--primary)', borderBottom: '2px solid var(--border)', paddingBottom: 6, marginBottom: 10 }}>Order Summary</div>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="op-summary-table">
+                <thead>
+                  <tr>
+                    <th>Room</th><th>Fabric / Material</th><th>Supplier</th><th>Type</th>
+                    <th style={{ textAlign: 'right' }}>Qty</th><th style={{ textAlign: 'right' }}>Panels</th>
+                    <th style={{ textAlign: 'right' }}>Width (in)</th><th style={{ textAlign: 'right' }}>Rate</th>
+                    <th style={{ textAlign: 'right' }}>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orderItems.map((item) => (
+                    <tr key={item.id}>
+                      <td style={{ fontWeight: 700, fontSize: 12 }}>{item.roomName || '—'}</td>
+                      <td style={{ fontWeight: 700 }}>{item.fabricName || item.fabricLabel || '—'}</td>
+                      <td style={{ color: 'var(--muted)' }}>{item.supplier || <span style={{ color: '#EF4444', fontWeight: 700 }}>Not set</span>}</td>
+                      <td><span style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', borderRadius: 999, padding: '2px 8px', fontSize: 11, fontWeight: 800 }}>{item.type}</span></td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{item.metersToOrder || '—'} {item.unit}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--muted)' }}>{item.panels || '—'}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--muted)' }}>{item.clothWidthInch ? `${item.clothWidthInch}"` : '—'}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--muted)' }}>{item.ratePerMeter ? currency(toNum(item.ratePerMeter)) : '—'}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 800, color: 'var(--primary)' }}>{toNum(item.metersToOrder) > 0 && toNum(item.ratePerMeter) > 0 ? currency(toNum(item.metersToOrder) * toNum(item.ratePerMeter)) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                {totalOrderValue > 0 && (
+                  <tfoot>
+                    <tr style={{ background: '#FFF5FA' }}>
+                      <td colSpan={8} style={{ fontWeight: 900, padding: '10px 12px' }}>Total Purchase Value</td>
+                      <td style={{ textAlign: 'right', fontWeight: 900, color: 'var(--primary)', fontSize: 15, padding: '10px 12px' }}>{currency(totalOrderValue)}</td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </div>
+        )}
+      </Box>
+
+      {/* Save + Process CTA */}
+      <div className="save-bottom-bar">
+        <span className="save-bottom-label">Save order data first, then process to Fabric Processing.</span>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-outline" onClick={handleSave}><FileText size={15} /> Save Order Data</button>
+          <button
+            className="btn btn-primary"
+            onClick={handleProcessOrder}
+            style={{ background: '#059669', borderColor: '#059669' }}
+          >
+            <Package size={15} /> Process Order → Fabric Processing
           </button>
         </div>
-        {/* CHANGED: updated how-to-use description */}
-        <div style={{ marginTop: 20, padding: '12px 14px', background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8, fontSize: 12, color: '#065F46' }}>
-          <strong>How to use:</strong> Set "Reduction (qty)" for each fabric row — e.g. entering <strong>1</strong> means you quoted 10 m but will order 9 m. Enter <strong>2</strong> for rolls to order 2 rolls fewer. The reduction accounts for extra allowance included in the customer's quote. Blind quantities are not reduced since they're area-based.
+      </div>
+
+      {savedSuccessfully && (
+        <div className="process-order-cta">
+          <div style={{ fontSize: 28 }}>🚀</div>
+          <div className="process-order-cta-text">
+            <div className="process-order-cta-title">Order data saved! Ready to process.</div>
+            <div className="process-order-cta-sub">Click "Process Order → Fabric Processing" above to send all fabrics to the global Fabric Processing checklist.</div>
+          </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================
+   Fabric Processing Tab (REVISED — GLOBAL, shows OP data)
+   ========================= */
+function FabricProcessingTab({ globalFabricItems, onUpdateGlobalItems, onClearAll }) {
+  const items = globalFabricItems;
+  const setItems = onUpdateGlobalItems;
+
+  const [manualFabric, setManualFabric] = useState({
+    roomName: "",
+    fabricName: "",
+    supplier: "",
+    metersToOrder: "",
+    unit: "m",
+    receivedDate: "",
+    supplierBillNo: "",
+  });
+
+  const orderedCount = items.filter(i => i.ordered).length;
+  const receivedCount = items.filter(i => i.received).length;
+  const total = items.length;
+
+  const quoteGroups = useMemo(() => {
+    const groups = {};
+    items.forEach(item => {
+      const key = item.quoteNo || 'Unknown';
+      if (!groups[key]) groups[key] = { quoteNo: key, customerName: item.customerName || '', items: [] };
+      groups[key].items.push(item);
+    });
+    return Object.values(groups);
+  }, [items]);
+
+  const toggle = useCallback((id, field) => {
+    setItems(prev => prev.map(i => {
+      if (i.id !== id) return i;
+      const updated = { ...i, [field]: !i[field] };
+      if (field === 'received' && updated.received) updated.ordered = true;
+      if (field === 'ordered' && !updated.ordered) updated.received = false;
+      return updated;
+    }));
+  }, [setItems]);
+
+  const updateItem = useCallback((id, patch) => {
+    setItems(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i));
+  }, [setItems]);
+
+  const markAllOrdered = () => setItems(prev => prev.map(i => ({ ...i, ordered: true })));
+  const markAllReceived = () => setItems(prev => prev.map(i => ({ ...i, ordered: true, received: true })));
+  const resetAll = () => setItems(prev => prev.map(i => ({ ...i, ordered: false, received: false })));
+  const removeItem = (id) => setItems(prev => prev.filter(i => i.id !== id));
+
+  const addManualFabric = useCallback(() => {
+    const fabricName = String(manualFabric.fabricName || "").trim();
+    const supplier = String(manualFabric.supplier || "").trim();
+    const qty = String(manualFabric.metersToOrder || "").trim();
+
+    if (!fabricName && !supplier && !qty) return;
+
+    const newItem = {
+      id: `manual-${crypto.randomUUID()}`,
+      quoteNo: "Manual",
+      customerName: "Manual Entry",
+      roomName: manualFabric.roomName || "Manual",
+      fabricName: fabricName || "Manual Fabric",
+      materialName: fabricName || "Manual Fabric",
+      supplier,
+      metersToOrder: qty,
+      unit: manualFabric.unit || "m",
+      ordered: false,
+      received: false,
+      receivedDate: manualFabric.receivedDate || "",
+      supplierBillNo: manualFabric.supplierBillNo || "",
+      isManual: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    setItems(prev => [newItem, ...prev]);
+    setManualFabric({
+      roomName: "",
+      fabricName: "",
+      supplier: "",
+      metersToOrder: "",
+      unit: "m",
+      receivedDate: "",
+      supplierBillNo: "",
+    });
+  }, [manualFabric, setItems]);
+
+  const downloadFabricProcessingExcel = useCallback(() => {
+    const rows = (items || []).map(item => ({
+      "Quote No": item.quoteNo || "",
+      "Customer": item.customerName || "",
+      "Room": item.roomName || "",
+      "Material Name": item.fabricName || item.materialName || "",
+      "Supplier": item.supplier || "",
+      "Qty": item.metersToOrder || item.qty || "",
+      "Unit": item.unit || "",
+      "Ordered": item.ordered ? "Yes" : "No",
+      "Received": item.received ? "Yes" : "No",
+      "Received Date": item.receivedDate || "",
+      "Supplier Bill No.": item.supplierBillNo || "",
+      "Entry Type": item.isManual ? "Manual" : "Quote",
+    }));
+
+    if (!rows.length) return;
+
+    const headers = Object.keys(rows[0]);
+    const escapeHtml = value => String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+
+    const tableRows = rows.map(row => `
+      <tr>${headers.map(header => `<td>${escapeHtml(row[header])}</td>`).join("")}</tr>
+    `).join("");
+
+    const html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <meta charset="UTF-8" />
+          <style>
+            table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; }
+            th { background: #B70766; color: #ffffff; font-weight: bold; border: 1px solid #d8d8d8; padding: 8px; text-align: left; }
+            td { border: 1px solid #d8d8d8; padding: 8px; }
+            tr:nth-child(even) td { background: #F5EBDD; }
+          </style>
+        </head>
+        <body>
+          <table>
+            <thead>
+              <tr>${headers.map(header => `<th>${escapeHtml(header)}</th>`).join("")}</tr>
+            </thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </body>
+      </html>
+    `;
+
+    const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `fabric-processing-${new Date().toISOString().slice(0, 10)}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [items]);
+
+  const manualFabricForm = (
+    <Box title="Add Fabric Manually">
+      <div className="grid-3">
+        <Field label="Room / Area">
+          <input
+            className="input"
+            value={manualFabric.roomName}
+            onChange={e => setManualFabric(prev => ({ ...prev, roomName: e.target.value }))}
+            placeholder="e.g. Living Room"
+          />
+        </Field>
+        <Field label="Material Name">
+          <input
+            className="input"
+            value={manualFabric.fabricName}
+            onChange={e => setManualFabric(prev => ({ ...prev, fabricName: e.target.value }))}
+            placeholder="e.g. Blue Jacquard"
+          />
+        </Field>
+        <Field label="Supplier">
+          <input
+            className="input"
+            value={manualFabric.supplier}
+            onChange={e => setManualFabric(prev => ({ ...prev, supplier: e.target.value }))}
+            placeholder="Supplier name"
+          />
+        </Field>
+        <Field label="Qty">
+          <input
+            className="input"
+            value={manualFabric.metersToOrder}
+            onChange={e => setManualFabric(prev => ({ ...prev, metersToOrder: e.target.value }))}
+            placeholder="e.g. 12.5"
+            inputMode="decimal"
+          />
+        </Field>
+        <Field label="Unit">
+          <select
+            className="select"
+            value={manualFabric.unit}
+            onChange={e => setManualFabric(prev => ({ ...prev, unit: e.target.value }))}
+          >
+            <option value="m">m</option>
+            <option value="rolls">rolls</option>
+            <option value="sq ft">sq ft</option>
+            <option value="pcs">pcs</option>
+          </select>
+        </Field>
+        <Field label="Received Date">
+          <input
+            className="input"
+            type="date"
+            value={manualFabric.receivedDate}
+            onChange={e => setManualFabric(prev => ({ ...prev, receivedDate: e.target.value }))}
+          />
+        </Field>
+        <Field label="Supplier Bill No.">
+          <input
+            className="input"
+            value={manualFabric.supplierBillNo}
+            onChange={e => setManualFabric(prev => ({ ...prev, supplierBillNo: e.target.value }))}
+            placeholder="Bill no."
+          />
+        </Field>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+        <button className="btn btn-primary" type="button" onClick={addManualFabric}>
+          <Plus size={15} /> Add Fabric
+        </button>
+      </div>
+    </Box>
+  );
+
+  if (!items.length) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {manualFabricForm}
+        <Box title="Fabric Processing — Global">
+          <div className="empty-box" style={{ padding: 40 }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>📦</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary-dark)', marginBottom: 8 }}>No fabrics in processing yet</div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', maxWidth: 380, margin: '0 auto', lineHeight: 1.6 }}>
+              Go to an approved quote → <strong>Order Processing</strong> → fill in fabric details → click <strong>"Process Order → Fabric Processing"</strong> to populate this list, or add a fabric manually above.
+            </div>
+          </div>
+        </Box>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {manualFabricForm}
+
+      <div className="fp-kpi-grid">
+        {[
+          { label: 'Total Fabrics', value: total, color: 'var(--primary)' },
+          { label: 'Quotes', value: quoteGroups.length, color: '#7C3AED' },
+          { label: 'Ordered', value: `${orderedCount} / ${total}`, color: '#1D4ED8' },
+          { label: 'Received', value: `${receivedCount} / ${total}`, color: '#059669' },
+        ].map(k => (
+          <div key={k.label} className="fp-kpi">
+            <div className="fp-kpi-label">{k.label}</div>
+            <div style={{ fontSize: 22, fontWeight: 900, color: k.color }}>{k.value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="fp-progress-card">
+        {[
+          { label: 'Ordered', count: orderedCount, color: '#3B82F6' },
+          { label: 'Received', count: receivedCount, color: '#059669' },
+        ].map(bar => (
+          <div key={bar.label} className="fp-progress-row">
+            <div className="fp-progress-meta">
+              <span>{bar.label}</span>
+              <span>{total > 0 ? Math.round((bar.count / total) * 100) : 0}%</span>
+            </div>
+            <div className="fp-progress-bar-bg">
+              <div className="fp-progress-bar-fill" style={{ width: `${total > 0 ? (bar.count / total) * 100 : 0}%`, background: bar.color }} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="fp-bulk-actions">
+        <button className="btn btn-outline btn-sm" onClick={markAllOrdered}>✓ Mark All Ordered</button>
+        <button className="btn btn-outline btn-sm" style={{ borderColor: '#059669', color: '#059669' }} onClick={markAllReceived}>✓ Mark All Received</button>
+        <button className="btn btn-outline btn-sm" style={{ borderColor: '#9CA3AF', color: '#6B7280' }} onClick={resetAll}>↺ Reset Checkboxes</button>
+        <button className="btn btn-outline btn-sm" type="button" onClick={downloadFabricProcessingExcel}>
+          <Download size={13} /> Download Excel
+        </button>
+        <button className="btn btn-danger btn-sm" style={{ marginLeft: 'auto' }} onClick={() => { if (window.confirm('Clear ALL fabric processing items? This cannot be undone.')) onClearAll(); }}>
+          <Trash2 size={13} /> Clear All
+        </button>
+      </div>
+
+      {quoteGroups.map(group => (
+        <Box key={group.quoteNo} title={`${group.quoteNo}${group.customerName ? ` — ${group.customerName}` : ''}`}>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="fp-checklist-table">
+              <thead>
+                <tr>
+                  <th>Room</th>
+                  <th>Material Name</th>
+                  <th>Supplier</th>
+                  <th className="center">Qty</th>
+                  <th className="center">Ordered</th>
+                  <th className="center">Received</th>
+                  <th>Received Date</th>
+                  <th>Supplier Bill No.</th>
+                  <th className="center">Remove</th>
+                </tr>
+              </thead>
+              <tbody>
+                {group.items.map((item, idx) => {
+                  let rowBg = idx % 2 === 0 ? 'white' : '#FAFAFA';
+                  if (item.received) rowBg = '#F0FDF4';
+                  else if (item.ordered) rowBg = '#EFF6FF';
+
+                  return (
+                    <tr key={item.id}>
+                      <td style={{ background: rowBg, fontWeight: 700 }}>{item.roomName || '—'}</td>
+                      <td style={{ background: rowBg, fontWeight: item.fabricName ? 700 : 400, color: item.fabricName ? 'var(--text)' : 'var(--muted)', fontStyle: item.fabricName ? 'normal' : 'italic' }}>
+                        {item.fabricName || item.materialName || 'Not named'}
+                      </td>
+                      <td style={{ background: rowBg, color: item.supplier ? 'var(--text)' : '#EF4444', fontWeight: item.supplier ? 600 : 700, fontStyle: item.supplier ? 'normal' : 'italic' }}>
+                        {item.supplier || 'Not set'}
+                      </td>
+                      <td style={{ background: rowBg, textAlign: 'center', fontWeight: 700, color: 'var(--primary)', whiteSpace: 'nowrap' }}>
+                        {item.metersToOrder || item.qty || '—'} {item.unit || ''}
+                      </td>
+                      <td style={{ background: rowBg, textAlign: 'center' }}>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={!!item.ordered} onChange={() => toggle(item.id, 'ordered')} style={{ width: 18, height: 18, accentColor: '#3B82F6', cursor: 'pointer' }} />
+                        </label>
+                      </td>
+                      <td style={{ background: rowBg, textAlign: 'center' }}>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={!!item.received} onChange={() => toggle(item.id, 'received')} style={{ width: 18, height: 18, accentColor: '#059669', cursor: 'pointer' }} />
+                        </label>
+                      </td>
+                      <td style={{ background: rowBg }}>
+                        <input
+                          className="input"
+                          type="date"
+                          value={item.receivedDate || ""}
+                          onChange={e => updateItem(item.id, { receivedDate: e.target.value })}
+                          style={{ minWidth: 140 }}
+                        />
+                      </td>
+                      <td style={{ background: rowBg }}>
+                        <input
+                          className="input"
+                          value={item.supplierBillNo || ""}
+                          onChange={e => updateItem(item.id, { supplierBillNo: e.target.value })}
+                          placeholder="Bill no."
+                          style={{ minWidth: 140 }}
+                        />
+                      </td>
+                      <td style={{ background: rowBg, textAlign: 'center' }}>
+                        <button className="btn-remove-fabric" onClick={() => removeItem(item.id)} title="Remove from processing">×</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ display: 'flex', gap: 16, marginTop: 10, flexWrap: 'wrap', fontSize: 12, color: 'var(--muted)', fontWeight: 700 }}>
+            <span>{group.items.length} item{group.items.length !== 1 ? 's' : ''}</span>
+            <span>{group.items.filter(i => i.ordered).length} ordered</span>
+            <span>{group.items.filter(i => i.received).length} received</span>
+          </div>
+        </Box>
+      ))}
+
+      <div className="fp-legend" style={{ padding: '0 4px' }}>
+        <span className="fp-legend-item"><span className="fp-legend-swatch" style={{ background: '#EFF6FF', borderColor: '#BFDBFE' }} /> Ordered</span>
+        <span className="fp-legend-item"><span className="fp-legend-swatch" style={{ background: '#F0FDF4', borderColor: '#BBF7D0' }} /> Received</span>
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)' }}>Checking "Received" auto-checks "Ordered". Data is saved automatically.</span>
       </div>
     </div>
   );
 }
+
 /* =========================
    Dashboard Tab
    ========================= */
 function DashboardTab({ allQuotes }) {
-  const canvasRefs = {
-    monthly: useRef(null),
-    status: useRef(null),
-    topCustomers: useRef(null),
-    roomDist: useRef(null),
-  };
+  const canvasRefs = { monthly: useRef(null), status: useRef(null), topCustomers: useRef(null), roomDist: useRef(null) };
   const chartInstances = useRef({});
   const stats = useMemo(() => {
     const quotes = Object.values(allQuotes || {});
@@ -1316,29 +1943,14 @@ function DashboardTab({ allQuotes }) {
   const chartData = useMemo(() => {
     const quotes = Object.values(allQuotes || {});
     const months = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(); d.setMonth(d.getMonth() - i);
-      months.push(d.toISOString().slice(0, 7));
-    }
-    const monthlyRevenue = months.map(m => ({
-      label: new Date(m + '-01').toLocaleDateString('en-IN', { month: 'short', year: '2-digit' }),
-      value: quotes.filter(q => (q.updatedAt || '').slice(0, 7) === m).reduce((s, q) => s + (q.snapshot?.summary?.finalTotal || 0), 0),
-      count: quotes.filter(q => (q.updatedAt || '').slice(0, 7) === m).length,
-    }));
+    for (let i = 5; i >= 0; i--) { const d = new Date(); d.setMonth(d.getMonth() - i); months.push(d.toISOString().slice(0, 7)); }
+    const monthlyRevenue = months.map(m => ({ label: new Date(m + '-01').toLocaleDateString('en-IN', { month: 'short', year: '2-digit' }), value: quotes.filter(q => (q.updatedAt || '').slice(0, 7) === m).reduce((s, q) => s + (q.snapshot?.summary?.finalTotal || 0), 0), count: quotes.filter(q => (q.updatedAt || '').slice(0, 7) === m).length }));
     const statusCounts = QUOTE_STATUSES.reduce((acc, s) => { acc[s] = quotes.filter(q => (q.status || 'Draft') === s).length; return acc; }, {});
     const custMap = {};
-    quotes.forEach(q => {
-      const name = q.customer?.name || 'Unknown';
-      if (!custMap[name]) custMap[name] = 0;
-      custMap[name] += q.snapshot?.summary?.finalTotal || 0;
-    });
+    quotes.forEach(q => { const name = q.customer?.name || 'Unknown'; if (!custMap[name]) custMap[name] = 0; custMap[name] += q.snapshot?.summary?.finalTotal || 0; });
     const topCustomers = Object.entries(custMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
     const roomCounts = { '1': 0, '2': 0, '3': 0, '4': 0, '5+': 0 };
-    quotes.forEach(q => {
-      const n = q.rooms?.length || 0;
-      if (n <= 4) roomCounts[String(n)] = (roomCounts[String(n)] || 0) + 1;
-      else roomCounts['5+'] = (roomCounts['5+'] || 0) + 1;
-    });
+    quotes.forEach(q => { const n = q.rooms?.length || 0; if (n <= 4) roomCounts[String(n)] = (roomCounts[String(n)] || 0) + 1; else roomCounts['5+'] = (roomCounts['5+'] || 0) + 1; });
     return { monthlyRevenue, statusCounts, topCustomers, roomCounts };
   }, [allQuotes]);
   useEffect(() => {
@@ -1346,24 +1958,14 @@ function DashboardTab({ allQuotes }) {
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';
     script.onload = () => renderCharts();
     document.head.appendChild(script);
-    return () => {
-      Object.values(chartInstances.current).forEach(c => { try { c.destroy(); } catch(e) {} });
-      chartInstances.current = {};
-    };
+    return () => { Object.values(chartInstances.current).forEach(c => { try { c.destroy(); } catch(e) {} }); chartInstances.current = {}; };
   }, []);
-  useEffect(() => {
-    if (window.Chart) renderCharts();
-  }, [chartData]);
+  useEffect(() => { if (window.Chart) renderCharts(); }, [chartData]);
   function renderCharts() {
     if (!window.Chart) return;
     const pink = '#E5097F', pinkLight = 'rgba(229,9,127,0.15)';
     const statusColors = { Draft: '#6B7280', Sent: '#3B82F6', Approved: '#10B981', Rejected: '#EF4444', Cancelled: '#F59E0B' };
-    const makeChart = (key, config) => {
-      if (chartInstances.current[key]) { try { chartInstances.current[key].destroy(); } catch(e) {} }
-      const canvas = canvasRefs[key]?.current;
-      if (!canvas) return;
-      chartInstances.current[key] = new window.Chart(canvas, config);
-    };
+    const makeChart = (key, config) => { if (chartInstances.current[key]) { try { chartInstances.current[key].destroy(); } catch(e) {} } const canvas = canvasRefs[key]?.current; if (!canvas) return; chartInstances.current[key] = new window.Chart(canvas, config); };
     makeChart('monthly', { type: 'bar', data: { labels: chartData.monthlyRevenue.map(m => m.label), datasets: [{ label: 'Revenue (Rs)', data: chartData.monthlyRevenue.map(m => m.value), backgroundColor: pinkLight, borderColor: pink, borderWidth: 2, borderRadius: 6 }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => 'Rs.' + new Intl.NumberFormat('en-IN', { notation: 'compact' }).format(v) } } } } });
     makeChart('status', { type: 'doughnut', data: { labels: QUOTE_STATUSES, datasets: [{ data: QUOTE_STATUSES.map(s => chartData.statusCounts[s] || 0), backgroundColor: QUOTE_STATUSES.map(s => statusColors[s]), borderWidth: 2 }] }, options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } } } });
     makeChart('topCustomers', { type: 'bar', data: { labels: chartData.topCustomers.map(([name]) => name.length > 14 ? name.slice(0, 12) + '…' : name), datasets: [{ label: 'Total (Rs)', data: chartData.topCustomers.map(([, val]) => val), backgroundColor: pink, borderRadius: 6 }] }, options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { callback: v => 'Rs.' + new Intl.NumberFormat('en-IN', { notation: 'compact' }).format(v) } } } } });
@@ -1412,13 +2014,28 @@ function DashboardTab({ allQuotes }) {
     </div>
   );
 }
+
 /* =========================
    Main App
    ========================= */
-export default function CurtainQuotationApp() {
+export default function CurtainQuotationApp() 
+{
+    const [authUser, setAuthUser] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(LS_AUTH_USER_KEY) || "null");
+    } catch {
+      return null;
+    }
+  });
   const [settings, setSettings] = useState(loadSettings);
   const [settingsReady, setSettingsReady] = useState(!hasSupabaseConfig());
+
+  const logout = useCallback(() => {
+  localStorage.removeItem(LS_AUTH_USER_KEY);
+  setAuthUser(null);
+}, []);
   const settingsHydratedRef = useRef(false);
+
   useEffect(() => {
     let cancelled = false;
     async function hydrateSettings() {
@@ -1434,16 +2051,19 @@ export default function CurtainQuotationApp() {
     hydrateSettings();
     return () => { cancelled = true; };
   }, []);
+
   useEffect(() => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     if (!settingsHydratedRef.current || !hasSupabaseConfig()) return;
     const timer = setTimeout(() => { saveRemoteSettings(settings).catch(err => console.error(err)); }, 500);
     return () => clearTimeout(timer);
   }, [settings]);
+
   const [rooms, setRooms] = useState(() => [BlankRoom(1, loadSettings())]);
   const [miscellaneousCosts, setMiscellaneousCosts] = useState([]);
   const [quoteNo, setQuoteNo] = useState("");
   const [loadedBanner, setLoadedBanner] = useState("");
+  const [currentQuoteStatus, setCurrentQuoteStatus] = useState("Draft");
   const [quoteMeta, setQuoteMeta] = useState({
     customerName: "", customerPhone: "", projectTitle: "Curtain Quotation",
     company: { name: BRAND.companyName, pdfCompanyName: BRAND.pdfCompanyName, address: BRAND.address, phone: BRAND.phone, email: BRAND.email, logoUrl: BRAND.logoUrl, website: BRAND.website, gstin: BRAND.gstin, paymentQrUrl: BRAND.paymentQrUrl, paymentUpiId: BRAND.paymentUpiId },
@@ -1451,29 +2071,48 @@ export default function CurtainQuotationApp() {
     notes: "Prices are exclusive of taxes. Valid for 7 days.",
     commercials: { applyGst: false, gstRate: 0, discountType: "percent", discountValue: 0, place: "Pune", signatoryName: "Authorized Signatory", signatoryTitle: "", signatureUrl: normalizeImageUrl(DEFAULT_SIGNATURE_URL), needGstBill: false, gstin: "", billingAddress: "" },
   });
+
+  // Global fabric processing state — persisted to localStorage
+  const [globalFabricItems, setGlobalFabricItemsRaw] = useState(() => loadGlobalFabricProcessing());
+  const setGlobalFabricItems = useCallback((updater) => {
+    setGlobalFabricItemsRaw(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      saveGlobalFabricProcessing(next);
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     generateQuoteNo().then(no => { if (!cancelled) setQuoteNo(no); }).catch(err => { console.error(err); });
     return () => { cancelled = true; };
   }, []);
+
   const [activeTab, setActiveTab] = useState('quote');
+  useEffect(() => {
+  if (!authUser) return;
+  if (!canAccessTab(authUser, activeTab)) setActiveTab('quote');
+}, [authUser, activeTab]);
   const [historySearch, setHistorySearch] = useState("");
   const [historyStatusFilter, setHistoryStatusFilter] = useState("All");
   const [allQuotes, setAllQuotes] = useState({});
+
   const metaRef = useRef(quoteMeta);
   useEffect(() => { metaRef.current = quoteMeta; }, [quoteMeta]);
   const quoteNoRef = useRef(quoteNo);
   useEffect(() => { quoteNoRef.current = quoteNo; }, [quoteNo]);
+
   const refreshQuoteList = useCallback(async () => {
-    try { const map = await loadAllQuotes(); setAllQuotes(map || {}); }
-    catch (err) { console.error(err); }
+    try { const map = await loadAllQuotes(); setAllQuotes(map || {}); } catch (err) { console.error(err); }
   }, []);
   useEffect(() => { refreshQuoteList(); }, [refreshQuoteList]);
+
   const allQuotesArr = useMemo(() => {
     const arr = Object.values(allQuotes || {});
     arr.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
     return arr;
   }, [allQuotes]);
+
   useEffect(() => {
     const styleEl = document.createElement('style');
     styleEl.id = 'global-curtain-css';
@@ -1481,6 +2120,7 @@ export default function CurtainQuotationApp() {
     document.head.appendChild(styleEl);
     return () => { if (styleEl.parentNode) styleEl.parentNode.removeChild(styleEl); };
   }, []);
+
   const filteredQuotes = useMemo(() => {
     let arr = allQuotesArr;
     if (historyStatusFilter !== 'All') arr = arr.filter(rec => (rec.status || 'Draft') === historyStatusFilter);
@@ -1490,9 +2130,11 @@ export default function CurtainQuotationApp() {
     }
     return arr;
   }, [allQuotesArr, historySearch, historyStatusFilter]);
+
   const loadQuoteRecord = useCallback((rec) => {
     if (!rec) return;
     setQuoteNo(rec.quoteNo);
+    setCurrentQuoteStatus(rec.status || 'Draft');
     const migratedRooms = (rec.rooms && rec.rooms.length ? rec.rooms : [BlankRoom(1, settings)]).map(r => {
       if (r.fabrics && r.fabrics.length) return r;
       return { ...r, fabrics: [BlankFabric(settings, "Main", { materialName: r.materialName || "", materialPrice: r.materialPrice || "", clothMeters: r.clothMeters || "", stitching: r.stitching || settings.stitchingTypes[0], lining: r.lining || settings.linings[0] })] };
@@ -1511,6 +2153,7 @@ export default function CurtainQuotationApp() {
     setActiveTab('quote');
     setTimeout(() => setLoadedBanner(''), 4000);
   }, [settings]);
+
   const handleUpdateQuoteStatus = useCallback(async (quoteNo, newStatus) => {
     try {
       const map = await loadAllQuotes();
@@ -1519,9 +2162,11 @@ export default function CurtainQuotationApp() {
         if (hasSupabaseConfig()) { await saveQuoteRecord(quoteNo, map[quoteNo]); }
         else { await saveAllQuotes(map); }
         await refreshQuoteList();
+        if (quoteNo === quoteNoRef.current) setCurrentQuoteStatus(newStatus);
       }
     } catch (err) { console.error(err); }
   }, [refreshQuoteList]);
+
   const handleSaveQuote = useCallback(async () => {
     try {
       const allTotals = computeAllTotals(rooms, quoteMeta.commercials, settings, miscellaneousCosts);
@@ -1536,17 +2181,81 @@ export default function CurtainQuotationApp() {
         miscellaneousCosts,
         settingsSnapshot: settings,
         snapshot: allTotals,
-        status: existingRec?.status || 'Draft',
+        status: existingRec?.status || currentQuoteStatus || 'Draft',
+        orderProcessing: existingRec?.orderProcessing || null,
         createdAt: existingRec?.createdAt || new Date().toISOString(),
       });
       await refreshQuoteList();
       setLoadedBanner(`Saved as ${finalNo}${hasSupabaseConfig() ? " online" : " on this browser"}`);
       setTimeout(() => setLoadedBanner(''), 3000);
     } catch (err) { console.error(err); setLoadedBanner("Could not save quote."); }
-  }, [quoteNo, rooms, miscellaneousCosts, quoteMeta, settings, allQuotes, refreshQuoteList]);
+  }, [quoteNo, rooms, miscellaneousCosts, quoteMeta, settings, allQuotes, currentQuoteStatus, refreshQuoteList]);
+
+  const handleSaveOrderData = useCallback(async (orderProcessingData) => {
+    try {
+      const finalNo = quoteNo || await generateQuoteNo();
+      const existingRec = allQuotes[finalNo];
+      if (!existingRec) { alert("Please save the quote first before saving order data."); return; }
+      await saveQuoteRecord(finalNo, { ...existingRec, orderProcessing: orderProcessingData, updatedAt: new Date().toISOString() });
+      await refreshQuoteList();
+      setLoadedBanner("Order data saved!");
+      setTimeout(() => setLoadedBanner(''), 3000);
+    } catch (err) { console.error(err); alert("Could not save order data."); }
+  }, [quoteNo, allQuotes, refreshQuoteList]);
+
+  // NEW: Process order items → global fabric processing store
+  // Merges items with same fabricName + supplier + type (sums qty)
+  const handleProcessToFabricProcessing = useCallback((orderItems, srcQuoteNo, customerName) => {
+    // Build new fp items from orderItems
+    const newItems = orderItems.map(item => ({
+      // Unique ID based on quote + original id to allow updating
+      id: `${srcQuoteNo}__${item.id}`,
+      quoteNo: srcQuoteNo,
+      customerName,
+      roomName: item.roomName || '',
+      fabricLabel: item.fabricLabel || '',
+      fabricName: item.fabricName || '',
+      supplier: item.supplier || '',
+      metersToOrder: item.metersToOrder || '',
+      panels: item.panels || '',
+      clothWidthInch: item.clothWidthInch || '',
+      ratePerMeter: item.ratePerMeter || '',
+      type: item.type || 'Curtain',
+      unit: item.unit || 'm',
+      notes: item.notes || '',
+      ordered: false,
+      received: false,
+      receivedDate: "",
+      supplierBillNo: "",
+    }));
+
+    setGlobalFabricItems(prev => {
+      // Remove existing items for this quote, then add fresh ones (preserving ordered/received flags)
+      const existingForThisQuote = Object.fromEntries(prev.filter(i => i.quoteNo === srcQuoteNo).map(i => [i.id, i]));
+      const otherItems = prev.filter(i => i.quoteNo !== srcQuoteNo);
+      const merged = newItems.map(ni => ({
+        ...ni,
+        ordered: existingForThisQuote[ni.id]?.ordered ?? false,
+        received: existingForThisQuote[ni.id]?.received ?? false,
+        receivedDate: existingForThisQuote[ni.id]?.receivedDate || ni.receivedDate || "",
+        supplierBillNo: existingForThisQuote[ni.id]?.supplierBillNo || ni.supplierBillNo || "",
+      }));
+      return [...otherItems, ...merged];
+    });
+
+    setLoadedBanner(`✅ ${newItems.length} fabric${newItems.length !== 1 ? 's' : ''} sent to Fabric Processing!`);
+    setTimeout(() => setLoadedBanner(''), 4000);
+    setActiveTab('fabric-processing');
+  }, [setGlobalFabricItems]);
+
+  const handleClearAllFabricProcessing = useCallback(() => {
+    setGlobalFabricItems([]);
+  }, [setGlobalFabricItems]);
+
   const handleNewQuote = useCallback(async () => {
     const newNo = await generateQuoteNo();
     setQuoteNo(newNo);
+    setCurrentQuoteStatus('Draft');
     setRooms([BlankRoom(1, settings)]);
     setMiscellaneousCosts([]);
     setHistorySearch("");
@@ -1555,11 +2264,15 @@ export default function CurtainQuotationApp() {
     setActiveTab("quote");
     setTimeout(() => setLoadedBanner(""), 3000);
   }, [settings]);
+
   const handleDeleteQuote = useCallback(async (no) => {
     if (!window.confirm(`Delete quote ${no}?`)) return;
-    try { await deleteQuoteRecord(no); await refreshQuoteList(); if (quoteNo === no) { setQuoteNo(await generateQuoteNo()); setRooms([BlankRoom(1, settings)]); setMiscellaneousCosts([]); } }
-    catch (err) { console.error(err); }
+    try {
+      await deleteQuoteRecord(no); await refreshQuoteList();
+      if (quoteNo === no) { setQuoteNo(await generateQuoteNo()); setCurrentQuoteStatus('Draft'); setRooms([BlankRoom(1, settings)]); setMiscellaneousCosts([]); }
+    } catch (err) { console.error(err); }
   }, [quoteNo, settings, refreshQuoteList]);
+
   const updateRoom = useCallback((id, patch) => {
     setRooms(prev => { let changed = false; const next = prev.map(r => { if (r.id !== id) return r; const merged = { ...r, ...patch }; if (JSON.stringify(merged) !== JSON.stringify(r)) changed = true; return merged; }); return changed ? next : prev; });
   }, []);
@@ -1569,6 +2282,7 @@ export default function CurtainQuotationApp() {
   const addRoom = useCallback(() => addRoomAfter(-1), [addRoomAfter]);
   const cloneRoom = useCallback((id) => { setRooms(prev => { const r = prev.find(x => x.id === id); if (!r) return prev; return [...prev, { ...r, id: crypto.randomUUID(), name: `${r.name} (Copy)` }]; }); }, []);
   const deleteRoom = useCallback((id) => setRooms(prev => prev.filter(r => r.id !== id)), []);
+
   const roomsIncluded = useMemo(() => rooms.filter(r => r.include !== false), [rooms]);
   const totals = useMemo(() => roomsIncluded.map(r => ({ roomId: r.id, ...computeRoomCost(r, settings) })), [roomsIncluded, settings]);
   const grandTotal = useMemo(() => totals.reduce((s, t) => s + t.subtotal, 0), [totals]);
@@ -1576,9 +2290,11 @@ export default function CurtainQuotationApp() {
   const totalOther = useMemo(() => grandTotal - totalClothCost, [grandTotal, totalClothCost]);
   const miscTotal = useMemo(() => miscellaneousCosts.reduce((sum, item) => sum + (toNum(item.rate) * (toNum(item.quantity) || 1)), 0), [miscellaneousCosts]);
   const finalTotals = useMemo(() => computeFinalTotals(grandTotal + miscTotal, quoteMeta.commercials, totalClothCost), [grandTotal, miscTotal, quoteMeta.commercials, totalClothCost]);
+
   const handleAddMiscCost = useCallback(() => setMiscellaneousCosts(prev => [...prev, BlankMiscCost()]), []);
   const handleMiscCostChange = useCallback((id, patch) => setMiscellaneousCosts(prev => prev.map(item => item.id === id ? { ...item, ...patch } : item)), []);
   const handleDeleteMiscCost = useCallback((id) => setMiscellaneousCosts(prev => prev.filter(item => item.id !== id)), []);
+
   const handleAddStitch = useCallback(() => setSettings(s => ({ ...s, stitchingTypes: [...(s.stitchingTypes || []), { id: crypto.randomUUID(), label: "New Stitch", ratePerPanel: 0 }] })), []);
   const handleStitchChange = useCallback((idx, patch) => setSettings(s => { const arr = [...(s.stitchingTypes || [])]; arr[idx] = { ...arr[idx], ...patch }; return { ...s, stitchingTypes: arr }; }), []);
   const handleDeleteStitch = useCallback((idx) => setSettings(s => { const arr = [...(s.stitchingTypes || [])]; arr.splice(idx, 1); return { ...s, stitchingTypes: arr }; }), []);
@@ -1588,6 +2304,15 @@ export default function CurtainQuotationApp() {
   const handleAddTrack = useCallback(() => setSettings(s => ({ ...s, tracks: [...(s.tracks || []), { id: crypto.randomUUID(), label: "New Track", ratePerFt: 0 }] })), []);
   const handleTrackChange = useCallback((idx, patch) => setSettings(s => { const arr = [...(s.tracks || [])]; arr[idx] = { ...arr[idx], ...patch }; return { ...s, tracks: arr }; }), []);
   const handleDeleteTrack = useCallback((idx) => setSettings(s => { const arr = [...(s.tracks || [])]; arr.splice(idx, 1); return { ...s, tracks: arr }; }), []);
+
+  // Badge counts for tabs
+  const fpTotal = globalFabricItems.length;
+  const fpReceived = globalFabricItems.filter(i => i.received).length;
+  const fpPending = globalFabricItems.filter(i => i.ordered && !i.received).length;
+  const fpAllReceived = fpTotal > 0 && fpReceived === fpTotal;
+
+  if (!authUser) return <LoginScreen onLogin={setAuthUser} />;
+
   return (
     <div className="app-container">
       <div className="app-inner">
@@ -1598,28 +2323,52 @@ export default function CurtainQuotationApp() {
             <div><h1 className="hero-title">Curtain Quotation</h1><p className="hero-subtitle">Themes Furnishings & Decor</p></div>
           </div>
           <div className="hero-actions">
+                        <span className="user-pill">
+              Logged in as <span className="user-role">{authUser.role}</span>
+            </span>
+            <button className="btn btn-outline" onClick={logout}>Logout</button>
             {activeTab === 'quote' && <>
               <button onClick={handleNewQuote} className="btn btn-outline btn-sm"><Plus size={15} /> New Quote</button>
               <button onClick={addRoom} className="btn btn-primary btn-sm"><Plus size={15} /> Room</button>
-              <button onClick={async () => { try { const meta = { ...quoteMeta, quoteNo }; const mergeFabricsRoomWise = window.confirm("Do you want to merge all fabrics room-wise in the PDF?\n\nOK = Show Main + Sheer in one room row\nCancel = Show each fabric separately"); const doc = await generateFullPDF(rooms, meta, settings, miscellaneousCosts, mergeFabricsRoomWise); doc.save(`Quote_${quoteMeta.customerName || "Customer"}_${quoteNo || "Draft"}.pdf`); } catch (err) { console.error(err); setLoadedBanner("Could not download PDF."); } }} className="btn btn-outline btn-sm"><Download size={15} /> Full PDF</button>
+              <button onClick={async () => { try { const meta = { ...quoteMeta, quoteNo }; const mergeFabricsRoomWise = window.confirm("Merge all fabrics room-wise?\n\nOK = Show Main + Sheer in one row\nCancel = Show each separately"); const doc = await generateFullPDF(rooms, meta, settings, miscellaneousCosts, mergeFabricsRoomWise); doc.save(`Quote_${quoteMeta.customerName || "Customer"}_${quoteNo || "Draft"}.pdf`); } catch (err) { console.error(err); setLoadedBanner("Could not download PDF."); } }} className="btn btn-outline btn-sm"><Download size={15} /> Full PDF</button>
               <button onClick={handleSaveQuote} className="btn btn-primary btn-sm">Save</button>
             </>}
             {(activeTab === 'history' || activeTab === 'dashboard') && <button onClick={handleNewQuote} className="btn btn-primary btn-sm"><Plus size={15} /> New Quote</button>}
           </div>
         </div>
+
         {/* Tabs */}
         <div className="tabs-box">
           {[
             ['quote', 'Quote'],
-            ['order', 'Order Report'],
+            ['order-processing', 'Order Processing'],
+            ['fabric-processing', 'Fabric Processing'],
             ['history', 'Saved Quotes'],
             ['dashboard', 'Dashboard'],
             ['company', 'Company'],
             ['settings', 'Settings'],
-          ].map(([id, label]) => (
-            <button key={id} className={`tab ${activeTab === id ? 'tab-active' : ''}`} onClick={() => setActiveTab(id)}>{label}</button>
+          ].filter(([id]) => canAccessTab(authUser, id)).map(([id, label]) => (
+            <button key={id} className={`tab ${activeTab === id ? 'tab-active' : ''}`} onClick={() => setActiveTab(id)}>
+              {id === 'order-processing' && (currentQuoteStatus === 'Approved' || allQuotes[quoteNo]?.status === 'Approved') ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  <span style={{ width: 8, height: 8, background: '#10B981', borderRadius: '50%', display: 'inline-block', flexShrink: 0 }} />
+                  {label}
+                </span>
+              ) : id === 'fabric-processing' && fpAllReceived ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  <span style={{ width: 8, height: 8, background: '#059669', borderRadius: '50%', display: 'inline-block', flexShrink: 0 }} />
+                  {label}
+                </span>
+              ) : id === 'fabric-processing' && fpTotal > 0 ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  <span style={{ width: 18, height: 18, background: fpPending > 0 ? '#F59E0B' : '#3B82F6', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 10, fontWeight: 900, color: 'white' }}>{fpTotal}</span>
+                  {label}
+                </span>
+              ) : label}
+            </button>
           ))}
         </div>
+
         {/* QUOTE TAB */}
         {activeTab === 'quote' && <>
           {loadedBanner && <div className="loaded-banner">{loadedBanner}</div>}
@@ -1629,8 +2378,19 @@ export default function CurtainQuotationApp() {
               <div className="field-group"><label className="field-label">Phone</label><input className="input" value={quoteMeta.customerPhone} onChange={e => setQuoteMeta(o => ({ ...o, customerPhone: e.target.value }))} onFocus={e => e.currentTarget.select()} placeholder="+91 98765 43210" /></div>
               <div className="field-group"><label className="field-label">Project</label><input className="input" value={quoteMeta.projectTitle} onChange={e => setQuoteMeta(o => ({ ...o, projectTitle: e.target.value }))} onFocus={e => e.currentTarget.select()} placeholder="e.g. Living Room" /></div>
             </div>
-            {quoteNo && <div style={{ marginTop: 10 }}><span className="current-quote-badge">{quoteNo}</span></div>}
+            {quoteNo && (
+              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span className="current-quote-badge">{quoteNo}</span>
+                <StatusBadge status={currentQuoteStatus || allQuotes[quoteNo]?.status || 'Draft'} />
+                {(currentQuoteStatus === 'Approved' || allQuotes[quoteNo]?.status === 'Approved') && (
+                  <button className="btn btn-outline btn-sm" style={{ borderColor: '#10B981', color: '#10B981', fontSize: 11 }} onClick={() => setActiveTab('order-processing')}>
+                    <Package size={12} /> Process Order →
+                  </button>
+                )}
+              </div>
+            )}
           </Box>
+
           <Box title="Rooms">
             {rooms.length === 0 && <div className="empty-box">No rooms yet. Click "+ Room" above to add.</div>}
             {rooms.map((r, idx) => (
@@ -1644,6 +2404,7 @@ export default function CurtainQuotationApp() {
               </React.Fragment>
             ))}
           </Box>
+
           <Box title="Miscellaneous Costs">
             <div className="summary-inner">
               {miscellaneousCosts.length === 0 ? (
@@ -1674,6 +2435,7 @@ export default function CurtainQuotationApp() {
               </div>
             </div>
           </Box>
+
           <Box title="Summary & Grand Total">
             <div className="summary-inner">
               <div className="summary-list">
@@ -1721,44 +2483,49 @@ export default function CurtainQuotationApp() {
                 <span className="save-bottom-label">{quoteNo ? `Quote: ${quoteNo}` : 'Not yet saved'}</span>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button onClick={async () => {
-  try {
-    const finalNo = quoteNo || await generateQuoteNo();
-    if (!quoteNo) setQuoteNo(finalNo);
-
-    const meta = {
-      ...quoteMeta,
-      quoteNo: finalNo,
-    };
-
-    const mergeFabricsRoomWise = window.confirm(
-      "Do you want to merge all fabrics room-wise in the PDF?\n\nOK = Show Main + Sheer in one room row\nCancel = Show each fabric separately"
-    );
-
-    const doc = await generateFullPDF(
-      rooms,
-      meta,
-      settings,
-      miscellaneousCosts,
-      mergeFabricsRoomWise
-    );
-
-    const customerFileName = safeFileNamePart(meta.customerName || quoteMeta.customerName);
-    doc.save(`${finalNo}-${customerFileName}.pdf`);
-  } catch (err) {
-    console.error(err);
-    alert("Could not download the PDF. Please check the quote details and try again.");
-  }
-}} className="btn btn-outline"><Download size={15} /> Full PDF</button>
+                    try {
+                      const finalNo = quoteNo || await generateQuoteNo();
+                      if (!quoteNo) setQuoteNo(finalNo);
+                      const meta = { ...quoteMeta, quoteNo: finalNo };
+                      const mergeFabricsRoomWise = window.confirm("Merge all fabrics room-wise?\n\nOK = Show Main + Sheer in one row\nCancel = Show each separately");
+                      const doc = await generateFullPDF(rooms, meta, settings, miscellaneousCosts, mergeFabricsRoomWise);
+                      doc.save(`${finalNo}-${safeFileNamePart(meta.customerName || quoteMeta.customerName)}.pdf`);
+                    } catch (err) {
+                      console.error(err);
+                      alert("Could not download the PDF. Please check the quote details and try again.");
+                    }
+                  }} className="btn btn-outline"><Download size={15} /> Full PDF</button>
                   <button onClick={handleSaveQuote} className="btn btn-primary"><FileText size={15} /> Save Quote</button>
                 </div>
               </div>
             </div>
           </Box>
         </>}
-        {/* ORDER REPORT TAB */}
-        {activeTab === 'order' && (
-          <OrderReportTab rooms={rooms} quoteMeta={quoteMeta} quoteNo={quoteNo} />
-        )}
+
+        {/* ORDER PROCESSING TAB */}
+        {activeTab === 'order-processing' && <>
+          {loadedBanner && <div className="loaded-banner">{loadedBanner}</div>}
+          <OrderProcessingTab
+            rooms={rooms}
+            quoteMeta={quoteMeta}
+            quoteNo={quoteNo}
+            currentQuoteStatus={currentQuoteStatus}
+            allQuotes={allQuotes}
+            onSaveOrderData={handleSaveOrderData}
+            onProcessToFabricProcessing={handleProcessToFabricProcessing}
+          />
+        </>}
+
+        {/* FABRIC PROCESSING TAB — GLOBAL */}
+        {activeTab === 'fabric-processing' && <>
+          {loadedBanner && <div className="loaded-banner">{loadedBanner}</div>}
+          <FabricProcessingTab
+            globalFabricItems={globalFabricItems}
+            onUpdateGlobalItems={setGlobalFabricItems}
+            onClearAll={handleClearAllFabricProcessing}
+          />
+        </>}
+
         {/* HISTORY TAB */}
         {activeTab === 'history' && (
           <Box title="Saved Quotes">
@@ -1818,6 +2585,11 @@ export default function CurtainQuotationApp() {
                           <td>
                             <div className="history-row-actions">
                               <button className="btn btn-primary btn-sm" onClick={() => loadQuoteRecord(rec)}>Load</button>
+                              {rec.status === 'Approved' && (
+                                <button className="btn btn-sm" style={{ background: '#ECFDF5', color: '#065F46', border: '1px solid #6EE7B7' }} onClick={() => { loadQuoteRecord(rec); setTimeout(() => setActiveTab('order-processing'), 100); }} title="Process Order">
+                                  <Package size={13} />
+                                </button>
+                              )}
                               <button className="btn btn-danger btn-sm" onClick={() => handleDeleteQuote(rec.quoteNo)}><Trash2 size={13} /></button>
                             </div>
                           </td>
@@ -1831,6 +2603,7 @@ export default function CurtainQuotationApp() {
             <div style={{ marginTop: 12, fontSize: 12, color: 'var(--muted)' }}>{filteredQuotes.length} quote{filteredQuotes.length !== 1 ? 's' : ''}{historySearch || historyStatusFilter !== 'All' ? ' found' : ' total'}</div>
           </Box>
         )}
+
         {/* DASHBOARD TAB */}
         {activeTab === 'dashboard' && (
           <Box title="Dashboard">
@@ -1841,6 +2614,7 @@ export default function CurtainQuotationApp() {
             </div>
           </Box>
         )}
+
         {/* COMPANY TAB */}
         {activeTab === 'company' && (
           <Box title="Company Branding">
@@ -1882,6 +2656,7 @@ export default function CurtainQuotationApp() {
             </div>
           </Box>
         )}
+
         {/* SETTINGS TAB */}
         {activeTab === 'settings' && <>
           <Box title="Stitching Types">
