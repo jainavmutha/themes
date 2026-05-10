@@ -1595,6 +1595,7 @@ function FabricProcessingTab({ globalFabricItems, onUpdateGlobalItems, onClearAl
     receivedDate: "",
     supplierBillNo: "",
   });
+  const [showManualFabricForm, setShowManualFabricForm] = useState(false);
 
   const orderedCount = items.filter(i => i.ordered).length;
   const receivedCount = items.filter(i => i.received).length;
@@ -1674,6 +1675,7 @@ function FabricProcessingTab({ globalFabricItems, onUpdateGlobalItems, onClearAl
       receivedDate: "",
       supplierBillNo: "",
     });
+    setShowManualFabricForm(false);
   }, [manualFabric, setItems]);
 
   const downloadFabricProcessingExcel = useCallback(() => {
@@ -1739,77 +1741,111 @@ function FabricProcessingTab({ globalFabricItems, onUpdateGlobalItems, onClearAl
   }, [items]);
 
   const manualFabricForm = (
-    <Box title="Add Fabric Manually">
-      <div className="grid-3">
-        <Field label="Room / Area">
-          <input
-            className="input"
-            value={manualFabric.roomName}
-            onChange={e => setManualFabric(prev => ({ ...prev, roomName: e.target.value }))}
-            placeholder="e.g. Living Room"
-          />
-        </Field>
-        <Field label="Material Name">
-          <input
-            className="input"
-            value={manualFabric.fabricName}
-            onChange={e => setManualFabric(prev => ({ ...prev, fabricName: e.target.value }))}
-            placeholder="e.g. Blue Jacquard"
-          />
-        </Field>
-        <Field label="Supplier">
-          <input
-            className="input"
-            value={manualFabric.supplier}
-            onChange={e => setManualFabric(prev => ({ ...prev, supplier: e.target.value }))}
-            placeholder="Supplier name"
-          />
-        </Field>
-        <Field label="Qty">
-          <input
-            className="input"
-            value={manualFabric.metersToOrder}
-            onChange={e => setManualFabric(prev => ({ ...prev, metersToOrder: e.target.value }))}
-            placeholder="e.g. 12.5"
-            inputMode="decimal"
-          />
-        </Field>
-        <Field label="Unit">
-          <select
-            className="select"
-            value={manualFabric.unit}
-            onChange={e => setManualFabric(prev => ({ ...prev, unit: e.target.value }))}
-          >
-            <option value="m">m</option>
-            <option value="rolls">rolls</option>
-            <option value="sq ft">sq ft</option>
-            <option value="pcs">pcs</option>
-          </select>
-        </Field>
-        <Field label="Received Date">
-          <input
-            className="input"
-            type="date"
-            value={manualFabric.receivedDate}
-            onChange={e => setManualFabric(prev => ({ ...prev, receivedDate: e.target.value }))}
-          />
-        </Field>
-        <Field label="Supplier Bill No.">
-          <input
-            className="input"
-            value={manualFabric.supplierBillNo}
-            onChange={e => setManualFabric(prev => ({ ...prev, supplierBillNo: e.target.value }))}
-            placeholder="Bill no."
-          />
-        </Field>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-        <button className="btn btn-primary" type="button" onClick={addManualFabric}>
+  <Box title="Fabric Processing Actions">
+    {!showManualFabricForm ? (
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <button
+          className="btn btn-primary"
+          type="button"
+          onClick={() => setShowManualFabricForm(true)}
+        >
           <Plus size={15} /> Add Fabric
         </button>
       </div>
-    </Box>
-  );
+    ) : (
+      <>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ fontSize: 14, fontWeight: 900, color: "var(--primary-dark)" }}>
+            Add Fabric Manually
+          </div>
+          <button
+            className="btn btn-outline btn-sm"
+            type="button"
+            onClick={() => setShowManualFabricForm(false)}
+          >
+            Cancel
+          </button>
+        </div>
+
+        <div className="grid-3">
+          <Field label="Room / Area">
+            <input
+              className="input"
+              value={manualFabric.roomName}
+              onChange={e => setManualFabric(prev => ({ ...prev, roomName: e.target.value }))}
+              placeholder="e.g. Living Room"
+            />
+          </Field>
+
+          <Field label="Material Name">
+            <input
+              className="input"
+              value={manualFabric.fabricName}
+              onChange={e => setManualFabric(prev => ({ ...prev, fabricName: e.target.value }))}
+              placeholder="e.g. Blue Jacquard"
+            />
+          </Field>
+
+          <Field label="Supplier">
+            <input
+              className="input"
+              value={manualFabric.supplier}
+              onChange={e => setManualFabric(prev => ({ ...prev, supplier: e.target.value }))}
+              placeholder="Supplier name"
+            />
+          </Field>
+
+          <Field label="Qty">
+            <input
+              className="input"
+              value={manualFabric.metersToOrder}
+              onChange={e => setManualFabric(prev => ({ ...prev, metersToOrder: e.target.value }))}
+              placeholder="e.g. 12.5"
+              inputMode="decimal"
+            />
+          </Field>
+
+          <Field label="Unit">
+            <select
+              className="select"
+              value={manualFabric.unit}
+              onChange={e => setManualFabric(prev => ({ ...prev, unit: e.target.value }))}
+            >
+              <option value="m">m</option>
+              <option value="rolls">rolls</option>
+              <option value="sq ft">sq ft</option>
+              <option value="pcs">pcs</option>
+            </select>
+          </Field>
+
+          <Field label="Received Date">
+            <input
+              className="input"
+              type="date"
+              value={manualFabric.receivedDate}
+              onChange={e => setManualFabric(prev => ({ ...prev, receivedDate: e.target.value }))}
+            />
+          </Field>
+
+          <Field label="Supplier Bill No.">
+            <input
+              className="input"
+              value={manualFabric.supplierBillNo}
+              onChange={e => setManualFabric(prev => ({ ...prev, supplierBillNo: e.target.value }))}
+              placeholder="Bill no."
+            />
+          </Field>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+          <button className="btn btn-primary" type="button" onClick={addManualFabric}>
+            <Plus size={15} /> Add Fabric
+          </button>
+        </div>
+      </>
+    )}
+  </Box>
+);
 
   if (!items.length) {
     return (
