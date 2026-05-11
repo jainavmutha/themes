@@ -9,6 +9,7 @@ const LS_QUOTES_KEY = "themes_quotes_v1";
 const LS_SEQ_PREFIX = "themes_seq_";
 // Global fabric processing store — NOT quote-specific
 const LS_FABRIC_PROCESSING_KEY = "themes_fabric_processing_global_v1";
+const LS_PAYMENTS_KEY = "themes_payments_v1";
 const LS_AUTH_USER_KEY = "themes_auth_user_v1";
 
 const AUTH_USERS = [
@@ -16,7 +17,7 @@ const AUTH_USERS = [
   { username: "staff", password: "staff123", role: "staff", label: "Staff" },
 ];
 
-const STAFF_ALLOWED_TABS = new Set(["quote", "settings", "fabric-processing"]);
+const STAFF_ALLOWED_TABS = new Set(["quote", "payments","settings", "fabric-processing"]);
 
 function canAccessTab(user, tab) {
   if (!user) return false;
@@ -187,7 +188,8 @@ async function loadRemoteFabricProcessing() {
   return Array.isArray(rows?.[0]?.value) ? rows[0].value : null;
 }
 
-async function saveRemoteFabricProcessing(items) {
+async function saveRemoteFabricProcessing(items) 
+{
   if (!hasSupabaseConfig()) {
     console.warn("Fabric Processing remote save skipped: Supabase config missing");
     return null;
@@ -209,6 +211,65 @@ async function saveRemoteFabricProcessing(items) {
 
   console.log("Fabric Processing saved online", payload.value.length, "items", result);
   return result;
+}
+
+function loadPaymentsStore() {
+  try { return JSON.parse(localStorage.getItem(LS_PAYMENTS_KEY) || '{}'); } catch { return {}; }
+}
+
+function savePaymentsStore(value) {
+  localStorage.setItem(LS_PAYMENTS_KEY, JSON.stringify(value || {}));
+}
+
+async function loadRemotePaymentsStore() {
+  if (!hasSupabaseConfig()) return null;
+
+  const rows = await supabaseFetch(
+    `/rest/v1/${SUPABASE_APP_STATE_TABLE}?select=value&key=eq.${encodeURIComponent(LS_PAYMENTS_KEY)}&limit=1`
+  );
+
+  return rows?.[0]?.value || null;
+}
+
+async function saveRemotePaymentsStore(value) {
+  if (!hasSupabaseConfig()) return null;
+
+  const payload = {
+    key: LS_PAYMENTS_KEY,
+    value: value || {},
+    updated_at: new Date().toISOString(),
+  };
+
+  return await supabaseFetch(`/rest/v1/${SUPABASE_APP_STATE_TABLE}?on_conflict=key`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    headers: {
+      Prefer: "resolution=merge-duplicates,return=representation",
+    },
+  });
+}
+
+function getQuoteCustomerName(quote) {
+  return String(
+    quote?.customer?.name ||
+    quote?.customerName ||
+    quote?.quoteMeta?.customerName ||
+    quote?.meta?.customerName ||
+    quote?.snapshot?.customerName ||
+    "Walk-in Customer"
+  ).trim() || "Walk-in Customer";
+}
+
+function getQuoteFinalTotal(quote) {
+  return Number(
+    quote?.snapshot?.summary?.finalTotal ||
+    quote?.summary?.finalTotal ||
+    quote?.all?.summary?.finalTotal ||
+    quote?.totals?.summary?.finalTotal ||
+    quote?.finalTotal ||
+    quote?.total ||
+    0
+  );
 }
 /* =========================
    SETTINGS
@@ -1318,12 +1379,7 @@ function OrderProcessingTab({ rooms, quoteMeta, quoteNo, currentQuoteStatus, all
     }
     return defaultOrderItems;
   });
-  const [advancePayments, setAdvancePayments] = useState(() => {
-    const saved = savedRecord?.orderProcessing?.advancePayments;
-    return Array.isArray(saved) ? saved : [];
-  });
-  const [newAdvanceAmt, setNewAdvanceAmt] = useState('');
-  const [newAdvanceNote, setNewAdvanceNote] = useState('');
+  
   const [savedSuccessfully, setSavedSuccessfully] = useState(false);
 
   useEffect(() => {
@@ -1333,25 +1389,16 @@ function OrderProcessingTab({ rooms, quoteMeta, quoteNo, currentQuoteStatus, all
     });
   }, [defaultOrderItems]);
 
-  const grandTotal = useMemo(() => savedRecord?.snapshot?.summary?.finalTotal || 0, [savedRecord]);
-  const totalAdvance = useMemo(() => advancePayments.reduce((s, p) => s + toNum(p.amount), 0), [advancePayments]);
-  const balance = grandTotal - totalAdvance;
-  const pctPaid = grandTotal > 0 ? Math.min(100, (totalAdvance / grandTotal) * 100) : 0;
+  
 
   const updateItem = (id, patch) => setOrderItems(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i));
   const addItem = () => setOrderItems(prev => [...prev, { id: crypto.randomUUID(), fabricLabel: 'Extra', roomName: '', fabricName: '', supplier: '', metersToOrder: '', panels: '', clothWidthInch: '', ratePerMeter: '', type: 'Curtain', unit: 'm', notes: '' }]);
   const removeItem = (id) => setOrderItems(prev => prev.filter(i => i.id !== id));
 
-  const addAdvance = () => {
-    const amt = toNum(newAdvanceAmt);
-    if (!amt) return;
-    setAdvancePayments(prev => [...prev, { id: crypto.randomUUID(), amount: amt, note: newAdvanceNote || 'Advance', date: new Date().toLocaleDateString('en-IN') }]);
-    setNewAdvanceAmt(''); setNewAdvanceNote('');
-  };
-  const removeAdvance = (id) => setAdvancePayments(prev => prev.filter(p => p.id !== id));
+  
 
   const handleSave = () => {
-    onSaveOrderData({ items: orderItems, advancePayments });
+    onSaveOrderData({ items: orderItems });
     setSavedSuccessfully(true);
   };
 
@@ -1393,83 +1440,7 @@ function OrderProcessingTab({ rooms, quoteMeta, quoteNo, currentQuoteStatus, all
         </div>
       </div>
 
-      {/* Payment Summary */}
-      <Box title="Payment Summary">
-        <div style={{ marginBottom: 16 }}>
-          <div className="op-financials">
-            <div className="op-fin-card quote">
-              <div className="op-fin-label">Quote Value</div>
-              <div className="op-fin-value">{currency(grandTotal)}</div>
-              <div className="op-fin-sub">Final approved amount</div>
-            </div>
-            <div className="op-fin-card advance">
-              <div className="op-fin-label">Advance Received</div>
-              <div className="op-fin-value">{currency(totalAdvance)}</div>
-              <div className="op-fin-sub">{advancePayments.length} payment{advancePayments.length !== 1 ? 's' : ''}</div>
-            </div>
-            <div className={`op-fin-card balance${balance <= 0 ? ' settled' : ''}`}>
-              <div className="op-fin-label">{balance <= 0 ? 'Fully Settled ✓' : 'Balance Due'}</div>
-              <div className="op-fin-value">{currency(Math.abs(balance))}</div>
-              <div className="op-fin-sub">{balance > 0 ? 'Amount pending from customer' : balance < 0 ? `Excess: ${currency(Math.abs(balance))}` : 'All paid!'}</div>
-            </div>
-          </div>
-          <div style={{ marginTop: 8 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--muted)', fontWeight: 700, marginBottom: 4 }}>
-              <span>Payment Progress</span><span>{pctPaid.toFixed(1)}% received</span>
-            </div>
-            <div className="op-progress-bar-bg">
-              <div className="op-progress-bar-fill" style={{ width: `${pctPaid}%`, background: pctPaid >= 100 ? '#059669' : pctPaid >= 50 ? '#F59E0B' : 'var(--primary)' }} />
-            </div>
-          </div>
-        </div>
-
-        {/* Record advance */}
-        <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 12, padding: '14px 16px', marginBottom: 12 }}>
-          <div style={{ fontWeight: 800, fontSize: 13, color: '#065F46', marginBottom: 10 }}>Record Advance Payment</div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <div className="field" style={{ flex: '0 0 160px' }}>
-              <label className="field-label">Amount (Rs)</label>
-              <input className="input op-advance-input" type="number" inputMode="decimal" placeholder="e.g. 25000" value={newAdvanceAmt} onChange={e => setNewAdvanceAmt(e.target.value)} onFocus={e => e.currentTarget.select()} style={{ borderColor: '#BBF7D0' }} />
-            </div>
-            <div className="field" style={{ flex: 1, minWidth: 180 }}>
-              <label className="field-label">Note / Reference</label>
-              <input className="input" placeholder="e.g. Cheque #1234, UPI, Cash" value={newAdvanceNote} onChange={e => setNewAdvanceNote(e.target.value)} style={{ borderColor: '#BBF7D0' }} />
-            </div>
-            <button className="btn btn-primary btn-sm" onClick={addAdvance} style={{ background: '#059669', borderColor: '#059669', height: 38 }}><Plus size={14} /> Add Payment</button>
-          </div>
-        </div>
-
-        {advancePayments.length > 0 && (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="op-summary-table">
-              <thead><tr><th>#</th><th>Date</th><th>Note / Reference</th><th style={{ textAlign: 'right' }}>Amount</th><th style={{ textAlign: 'center' }}>Remove</th></tr></thead>
-              <tbody>
-                {advancePayments.map((p, i) => (
-                  <tr key={p.id}>
-                    <td style={{ fontWeight: 700, color: 'var(--muted)' }}>{i + 1}</td>
-                    <td style={{ color: 'var(--muted)', fontSize: 12 }}>{p.date}</td>
-                    <td style={{ fontWeight: 600 }}>{p.note || '—'}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 800, color: '#059669' }}>{currency(p.amount)}</td>
-                    <td style={{ textAlign: 'center' }}><button className="btn btn-danger btn-sm" onClick={() => removeAdvance(p.id)}><Trash2 size={12} /></button></td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr style={{ background: '#F0FDF4' }}>
-                  <td colSpan={3} style={{ fontWeight: 900, padding: '10px 12px', color: '#065F46' }}>Total Advance</td>
-                  <td style={{ textAlign: 'right', fontWeight: 900, color: '#059669', fontSize: 15, padding: '10px 12px' }}>{currency(totalAdvance)}</td>
-                  <td />
-                </tr>
-                <tr style={{ background: balance <= 0 ? '#ECFDF5' : '#FFF7ED' }}>
-                  <td colSpan={3} style={{ fontWeight: 900, padding: '10px 12px', color: balance <= 0 ? '#065F46' : '#D97706' }}>{balance <= 0 ? '✓ Fully Settled' : 'Balance Remaining'}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 900, fontSize: 16, padding: '10px 12px', color: balance <= 0 ? '#059669' : '#D97706' }}>{currency(Math.abs(balance))}</td>
-                  <td />
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        )}
-      </Box>
+      
 
       {/* Fabric & Material Orders */}
       <Box title="Fabric & Material Orders">
@@ -2004,6 +1975,280 @@ function FabricProcessingTab({ globalFabricItems, onUpdateGlobalItems, onClearAl
   );
 }
 
+function PaymentsTab({ allQuotes, paymentsStore, setPaymentsStore }) {
+  const [selectedCustomer, setSelectedCustomer] = useState("");
+  const [paymentForm, setPaymentForm] = useState({
+    amount: "",
+    mode: "UPI",
+    date: new Date().toISOString().slice(0, 10),
+    note: "",
+  });
+
+  const customerGroups = useMemo(() => {
+    const map = {};
+
+    Object.values(allQuotes || {}).forEach(quote => {
+      const customerName = getQuoteCustomerName(quote);
+
+      if (!map[customerName]) {
+        map[customerName] = {
+          customerName,
+          quotes: [],
+          totalValue: 0,
+        };
+      }
+
+      const value = getQuoteFinalTotal(quote);
+
+      map[customerName].quotes.push({
+        quoteNo: quote.quoteNo || quote.quote_no || "Unknown",
+        status: quote.status || quote.quoteStatus || "Draft",
+        value,
+        date: quote.updatedAt || quote.createdAt || "",
+      });
+
+      map[customerName].totalValue += value;
+    });
+
+    return Object.values(map).sort(
+      (a, b) => b.totalValue - a.totalValue || a.customerName.localeCompare(b.customerName)
+    );
+  }, [allQuotes]);
+
+  useEffect(() => {
+    if (!selectedCustomer && customerGroups.length) {
+      setSelectedCustomer(customerGroups[0].customerName);
+    }
+  }, [customerGroups, selectedCustomer]);
+
+  const selectedGroup =
+    customerGroups.find(group => group.customerName === selectedCustomer) || customerGroups[0];
+
+  const customerKey = selectedGroup?.customerName || "";
+  const payments = Array.isArray(paymentsStore?.[customerKey]) ? paymentsStore[customerKey] : [];
+  const totalValue = selectedGroup?.totalValue || 0;
+  const totalReceived = payments.reduce((sum, payment) => sum + toNum(payment.amount), 0);
+  const balance = Math.max(0, totalValue - totalReceived);
+
+  const addPayment = useCallback(() => {
+    if (!customerKey) return;
+
+    const amount = toNum(paymentForm.amount);
+
+    if (amount <= 0) {
+      alert("Enter a payment amount first.");
+      return;
+    }
+
+    const payment = {
+      id: crypto.randomUUID(),
+      amount,
+      mode: paymentForm.mode || "UPI",
+      date: paymentForm.date || new Date().toISOString().slice(0, 10),
+      note: paymentForm.note || "",
+      createdAt: new Date().toISOString(),
+    };
+
+    setPaymentsStore(prev => ({
+      ...(prev || {}),
+      [customerKey]: [
+        payment,
+        ...(Array.isArray(prev?.[customerKey]) ? prev[customerKey] : []),
+      ],
+    }));
+
+    setPaymentForm({
+      amount: "",
+      mode: "UPI",
+      date: new Date().toISOString().slice(0, 10),
+      note: "",
+    });
+  }, [customerKey, paymentForm, setPaymentsStore]);
+
+  const removePayment = useCallback((paymentId) => {
+    if (!customerKey) return;
+
+    setPaymentsStore(prev => ({
+      ...(prev || {}),
+      [customerKey]: (Array.isArray(prev?.[customerKey]) ? prev[customerKey] : []).filter(
+        payment => payment.id !== paymentId
+      ),
+    }));
+  }, [customerKey, setPaymentsStore]);
+
+  if (!customerGroups.length) {
+    return (
+      <Box title="Payments">
+        <div className="empty-box">
+          No saved quotes yet. Save quotes first, then customer-wise payments will appear here.
+        </div>
+      </Box>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Box title="Payments — Customer Wise">
+        <div className="grid-3">
+          <Field label="Customer / Name">
+            <select
+              className="select"
+              value={customerKey}
+              onChange={e => setSelectedCustomer(e.target.value)}
+            >
+              {customerGroups.map(group => (
+                <option key={group.customerName} value={group.customerName}>
+                  {group.customerName}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <div className="op-fin-card quote">
+            <div className="op-fin-label">Total Quote Value</div>
+            <div className="op-fin-value">{currency(totalValue)}</div>
+            <div className="op-fin-sub">
+              Across {selectedGroup?.quotes.length || 0} quote
+              {(selectedGroup?.quotes.length || 0) !== 1 ? "s" : ""}
+            </div>
+          </div>
+
+          <div className={`op-fin-card balance ${balance <= 0 ? "settled" : ""}`}>
+            <div className="op-fin-label">Balance Due</div>
+            <div className="op-fin-value">{currency(balance)}</div>
+            <div className="op-fin-sub">Received: {currency(totalReceived)}</div>
+          </div>
+        </div>
+      </Box>
+
+      <Box title="Quotes Included">
+        <div style={{ overflowX: "auto" }}>
+          <table className="history-table">
+            <thead>
+              <tr>
+                <th>Quote No</th>
+                <th>Status</th>
+                <th>Date</th>
+                <th style={{ textAlign: "right" }}>Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(selectedGroup?.quotes || []).map(quote => (
+                <tr key={quote.quoteNo}>
+                  <td className="history-row-no">{quote.quoteNo}</td>
+                  <td><StatusBadge status={quote.status} /></td>
+                  <td className="history-row-date">
+                    {quote.date ? new Date(quote.date).toLocaleDateString("en-IN") : "—"}
+                  </td>
+                  <td className="history-row-total" style={{ textAlign: "right" }}>
+                    {currency(quote.value)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Box>
+
+      <Box title="Add Payment Received">
+        <div className="grid-3">
+          <Field label="Amount Received">
+            <input
+              className="input"
+              value={paymentForm.amount}
+              onChange={e => setPaymentForm(prev => ({ ...prev, amount: e.target.value }))}
+              placeholder="e.g. 10000"
+              inputMode="decimal"
+            />
+          </Field>
+
+          <Field label="Payment Type">
+            <select
+              className="select"
+              value={paymentForm.mode}
+              onChange={e => setPaymentForm(prev => ({ ...prev, mode: e.target.value }))}
+            >
+              <option value="UPI">UPI</option>
+              <option value="Cash">Cash</option>
+              <option value="Bank Transfer">Bank Transfer</option>
+              <option value="Card">Card</option>
+              <option value="Cheque">Cheque</option>
+              <option value="Other">Other</option>
+            </select>
+          </Field>
+
+          <Field label="Payment Date">
+            <input
+              className="input"
+              type="date"
+              value={paymentForm.date}
+              onChange={e => setPaymentForm(prev => ({ ...prev, date: e.target.value }))}
+            />
+          </Field>
+
+          <Field label="Note / Reference">
+            <input
+              className="input"
+              value={paymentForm.note}
+              onChange={e => setPaymentForm(prev => ({ ...prev, note: e.target.value }))}
+              placeholder="Txn ID, cheque no., remarks"
+            />
+          </Field>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+          <button className="btn btn-primary" type="button" onClick={addPayment}>
+            + Add Payment
+          </button>
+        </div>
+      </Box>
+
+      <Box title="Payment History">
+        {!payments.length ? (
+          <div className="empty-box">No payments received for this customer yet.</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="history-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Type</th>
+                  <th>Note</th>
+                  <th style={{ textAlign: "right" }}>Amount</th>
+                  <th style={{ textAlign: "center" }}>Remove</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map(payment => (
+                  <tr key={payment.id}>
+                    <td className="history-row-date">
+                      {payment.date ? new Date(payment.date).toLocaleDateString("en-IN") : "—"}
+                    </td>
+                    <td className="history-row-customer">{payment.mode || "—"}</td>
+                    <td>{payment.note || "—"}</td>
+                    <td className="history-row-total" style={{ textAlign: "right" }}>
+                      {currency(payment.amount)}
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      <button
+                        className="btn-remove-fabric"
+                        type="button"
+                        onClick={() => removePayment(payment.id)}
+                      >
+                        ×
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Box>
+    </div>
+  );
+}
+
 /* =========================
    Dashboard Tab
    ========================= */
@@ -2108,6 +2353,49 @@ export default function CurtainQuotationApp()
   });
   const [settings, setSettings] = useState(loadSettings);
   const [settingsReady, setSettingsReady] = useState(!hasSupabaseConfig());
+
+  const [paymentsStore, setPaymentsStoreRaw] = useState(() => loadPaymentsStore());
+
+useEffect(() => {
+  let cancelled = false;
+
+  async function hydratePaymentsStore() {
+    if (!hasSupabaseConfig()) return;
+
+    try {
+      const remotePayments = await loadRemotePaymentsStore();
+
+      if (cancelled) return;
+
+      if (remotePayments && typeof remotePayments === "object") {
+        setPaymentsStoreRaw(remotePayments);
+        savePaymentsStore(remotePayments);
+      } else {
+        const localPayments = loadPaymentsStore();
+        await saveRemotePaymentsStore(localPayments);
+      }
+    } catch (err) {
+      console.error("Could not load payments online", err);
+    }
+  }
+
+  hydratePaymentsStore();
+
+  return () => { cancelled = true; };
+}, []);
+
+const setPaymentsStore = useCallback((updater) => {
+  setPaymentsStoreRaw(prev => {
+    const next = typeof updater === "function" ? updater(prev) : updater;
+    savePaymentsStore(next);
+
+    if (hasSupabaseConfig()) {
+      saveRemotePaymentsStore(next).catch(err => console.error("Could not save payments online", err));
+    }
+
+    return next;
+  });
+}, []);
 
   const logout = useCallback(() => {
   localStorage.removeItem(LS_AUTH_USER_KEY);
@@ -2470,6 +2758,7 @@ export default function CurtainQuotationApp()
             ['quote', 'Quote'],
             ['order-processing', 'Order Processing'],
             ['fabric-processing', 'Fabric Processing'],
+            ['payments', 'Payments'],
             ['history', 'Saved Quotes'],
             ['dashboard', 'Dashboard'],
             ['company', 'Company'],
@@ -2652,6 +2941,13 @@ export default function CurtainQuotationApp()
             onClearAll={handleClearAllFabricProcessing}
           />
         </>}
+        {activeTab === 'payments' && canAccessTab(authUser, 'payments') && (
+  <PaymentsTab
+    allQuotes={allQuotes}
+    paymentsStore={paymentsStore}
+    setPaymentsStore={setPaymentsStore}
+  />
+)}
 
         {/* HISTORY TAB */}
         {activeTab === 'history' && (
@@ -2730,6 +3026,8 @@ export default function CurtainQuotationApp()
             <div style={{ marginTop: 12, fontSize: 12, color: 'var(--muted)' }}>{filteredQuotes.length} quote{filteredQuotes.length !== 1 ? 's' : ''}{historySearch || historyStatusFilter !== 'All' ? ' found' : ' total'}</div>
           </Box>
         )}
+
+        
 
         {/* DASHBOARD TAB */}
         {activeTab === 'dashboard' && (
