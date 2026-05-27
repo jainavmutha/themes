@@ -910,6 +910,36 @@ function drawGstBlock(doc, m, y, meta) {
   pdfText(doc, `Billing Address: ${meta.commercials.billingAddress||"N/A"}`, m+6, y+40);
   return y+48;
 }
+
+function drawPaymentTermsBlock(doc, m, y) {
+  const pw = doc.internal.pageSize.getWidth();
+  const w = pw - 2 * m;
+  const blockH = 76;
+
+  doc.setFillColor(255, 250, 245);
+  doc.setDrawColor(...pdfColor(BRAND.grid));
+  doc.roundedRect(m, y, w, blockH, 5, 5, "FD");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...pdfColor(BRAND.primary));
+  pdfText(doc, "PAYMENT TERMS", m + 8, y + 15);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(30, 30, 30);
+
+  const terms = [
+    "50% advance payment is required to start order processing.",
+    "Remaining 50% payment is due after installation.",
+  ];
+
+  terms.forEach((term, index) => {
+    pdfText(doc, `• ${term}`, m + 10, y + 31 + index * 12);
+  });
+
+  return y + blockH + 12;
+}
 function buildFabricSummaryRows(rooms, settings) {
   const effectiveRooms = rooms.filter(r => r.include !== false);
   const map = new Map();
@@ -1041,7 +1071,7 @@ function estimateFullPdfHeight(rooms, meta, settings, miscellaneousCosts = []) {
   const otherRowCount=Math.max(1,stitchKeys.size+liningKeys.size+trackKeys.size+(hasInstall?1:0)+miscRowCount);
   const {discountType,discountValue}=meta?.commercials||{};
   const hasDiscount=discountType==="percent"?Number(discountValue||0)>0:Math.round(discountValue||0)>0;
-  return Math.max(842,Math.ceil(116+(meta?.commercials?.needGstBill?52:0)+34+30+22+totalFabricEntries*26+24+(hasDiscount?48:0)+42+22+otherRowCount*24+24+220+28));
+  return Math.max(842,Math.ceil(116+(meta?.commercials?.needGstBill?52:0)+34+30+22+totalFabricEntries*26+24+(hasDiscount?48:0)+42+22+otherRowCount*24+24+96+220+28));
 }
 async function generateFullPDF(rooms, meta, settings, miscellaneousCosts = [], mergeFabricsRoomWise = false) {
   const logoDataURL = await imageToDataURL(meta.company.logoUrl);
@@ -1056,6 +1086,7 @@ async function generateFullPDF(rooms, meta, settings, miscellaneousCosts = [], m
   y = drawSectionHeader(doc, m, y, meta.quoteNo ? `QUOTATION - ${meta.quoteNo}` : 'QUOTATION');
   const all = computeAllTotals(rooms, meta.commercials, settings, miscellaneousCosts);
   y = drawGroupedSummarySection(doc, m, y, rooms, settings, meta.commercials, miscellaneousCosts, mergeFabricsRoomWise);
+  y = drawPaymentTermsBlock(doc, m, y);
   drawFinalSummaryPanel(doc, m, y, meta, all.summary, sigDataURL);
   return doc;
 }
