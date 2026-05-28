@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useCallback, useEffect } from "react";
-import { Download, Plus, Trash2, Copy, FileText, Package, BarChart2, ShoppingCart, CheckSquare } from "lucide-react";
+import { Download, Plus, Trash2, Copy, FileText, Package, BarChart2, ShoppingCart, CheckSquare, Files } from "lucide-react";
 import { jsPDF } from "jspdf";
 
 /* =========================
@@ -1091,6 +1091,178 @@ async function generateFullPDF(rooms, meta, settings, miscellaneousCosts = [], m
   return doc;
 }
 
+async function generateCombinedPDF(quotes, settings) {
+  // Collect all rooms across quotes, annotated with source quote
+  const allRooms = [];
+  const quoteSnapshots = [];
+  
+  for (const quote of quotes) {
+    const rooms = (quote.rooms || []).filter(r => r.include !== false);
+    const commercials = quote.commercials || {};
+    const misc = quote.miscellaneousCosts || [];
+    const allTotals = computeAllTotals(rooms, commercials, settings, misc);
+    
+    quoteSnapshots.push({
+      quoteNo: quote.quoteNo,
+      customer: quote.customer,
+      commercials,
+      misc,
+      rooms,
+      summary: allTotals.summary,
+    });
+    
+    rooms.forEach(r => allRooms.push({ ...r, _sourceQuote: quote.quoteNo }));
+  }
+
+  const firstQuote = quotes[0];
+  const logoDataURL = await imageToDataURL(firstQuote.company?.logoUrl || BRAND.logoUrl);
+  const paymentQrDataURL = await imageToDataURL(firstQuote.company?.paymentQrUrl || BRAND.paymentQrUrl);
+  const sigDataURL = await imageToDataURL(firstQuote.commercials?.signatureUrl || normalizeImageUrl(DEFAULT_SIGNATURE_URL));
+
+  // Grand combined totals (merge all commercials — use first quote's discount/GST)
+  // Combined total must be the sum of each saved quotation's own final total.
+// Do not recompute all rooms with the first quote's discount/GST.
+const combinedGrandTotal = quoteSnapshots.reduce(
+  (sum, qs) => sum + Number(qs.summary?.finalTotal || 0),
+  0
+);
+
+const combinedBaseTotal = quoteSnapshots.reduce(
+  (sum, qs) => sum + Number(qs.summary?.base || 0),
+  0
+);
+
+const combinedNetFabricTotal = quoteSnapshots.reduce(
+  (sum, qs) => sum + Number(qs.summary?.netFabricTotal ?? qs.summary?.clothTotal ?? 0),
+  0
+);
+
+const combinedOtherTotal = quoteSnapshots.reduce(
+  (sum, qs) => sum + Number(qs.summary?.otherTotal || 0),
+  0
+);
+
+const combinedGstTotal = quoteSnapshots.reduce(
+  (sum, qs) => sum + Number(qs.summary?.gstAmount || 0),
+  0
+);
+
+const combinedRoundOffTotal = quoteSnapshots.reduce(
+  (sum, qs) => sum + Number(qs.summary?.roundOff || 0),
+  0
+);
+
+  const m = 36, pageWidth = 595.28;
+  const pageHeight = 842;
+  const doc = new jsPDF({ orientation: 'p', unit: 'pt', format: [pageWidth, pageHeight] });
+
+  const meta = {
+    quoteNo: '',
+    customerName: firstQuote.customer?.name || 'Customer',
+    customerPhone: firstQuote.customer?.phone || '',
+    projectTitle: firstQuote.customer?.project || 'Combined Quotation',
+    company: { ...BRAND, ...(firstQuote.company || {}), paymentQrUrl: paymentQrDataURL || BRAND.paymentQrUrl },
+    commercials: {
+      ...(firstQuote.commercials || {}),
+      applyGst: combinedGstTotal > 0,
+      gstRate: '',
+      signatureUrl: sigDataURL,
+    },
+  };
+
+  let y = drawHeader(doc, m, meta, logoDataURL);
+  y = drawSectionHeader(doc, m, y, `COMBINED QUOTATION — ${firstQuote.customer?.name || 'Customer'}`);
+
+  const pw = doc.internal.pageSize.getWidth();
+  const tw = pw - 2 * m;
+
+  // Per-quote summary table
+  const rowH = 24;
+  doc.setFillColor(...pdfColor(BRAND.header));
+  doc.setDrawColor(...pdfColor(BRAND.grid));
+  doc.rect(m, y, tw, rowH, 'FD');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(80, 80, 80);
+  pdfText(doc, 'Quote No', m + 8, y + 16);
+  pdfText(doc, 'Project / Customer', m + 120, y + 16);
+  const rightText = (text, x, lineY) => { const s = String(text ?? ''); doc.text(s, x - doc.getTextWidth(s), lineY); };
+  rightText('Rooms', m + tw - 120, y + 16);
+  rightText('Grand Total', m + tw - 8, y + 16);
+  y += rowH;
+
+  quoteSnapshots.forEach((qs, idx) => {
+    const bg = idx % 2 === 0 ? [255, 255, 255] : [250, 250, 250];
+    doc.setFillColor(...bg); doc.rect(m, y, tw, rowH, 'F');
+    doc.setDrawColor(...pdfColor(BRAND.grid)); doc.rect(m, y, tw, rowH, 'S');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...pdfColor(BRAND.primary));
+    pdfText(doc, qs.quoteNo, m + 8, y + 16);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 30, 30);
+    pdfText(doc, qs.customer?.project || qs.customer?.name || '—', m + 120, y + 16);
+    doc.setFont('helvetica', 'bold');
+    rightText(String(qs.rooms.length), m + tw - 120, y + 16);
+rightText(`Rs.${numberWithCommas(qs.summary.finalTotal)}`, m + tw - 8, y + 16);
+    y += rowH;
+  });
+
+  // Totals row
+  doc.setFillColor(...pdfColor('#FFF7ED')); doc.rect(m, y, tw, rowH, 'F');
+  doc.setDrawColor(...pdfColor(BRAND.grid)); doc.rect(m, y, tw, rowH, 'S');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(30, 30, 30);
+  pdfText(doc, `${quotes.length} Quotes Combined`, m + 8, y + 16);
+  rightText(`Rs.${numberWithCommas(combinedGrandTotal)}`, m + tw - 8, y + 16);
+  y += rowH + 20;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(...pdfColor(BRAND.muted));
+  pdfText(doc, 'Each quotation is shown on a separate page after this summary for easier reading.', m + 8, y);
+  y += 16;
+
+  // Per-quote detailed sections: each quote starts on a fresh page for readability
+  for (const qs of quoteSnapshots) {
+    doc.addPage();
+
+    const quoteMeta = {
+      ...meta,
+      quoteNo: qs.quoteNo,
+      customerName: qs.customer?.name || meta.customerName || 'Customer',
+      customerPhone: qs.customer?.phone || meta.customerPhone || '',
+      projectTitle: qs.customer?.project || '',
+      commercials: {
+        ...meta.commercials,
+        ...qs.commercials,
+        signatureUrl: meta.commercials.signatureUrl,
+      },
+    };
+
+    y = drawHeader(doc, m, quoteMeta, logoDataURL);
+    y = drawSectionHeader(
+      doc,
+      m,
+      y,
+      `QUOTE ${qs.quoteNo}${qs.customer?.project ? ` - ${qs.customer.project}` : ''}`
+    );
+
+    y = drawGroupedSummarySection(doc, m, y, qs.rooms, settings, qs.commercials, qs.misc, false);
+  }
+  doc.addPage();
+  y = drawHeader(doc, m, meta, logoDataURL);
+  y = drawSectionHeader(doc, m, y, 'COMBINED FINAL TOTAL & PAYMENT TERMS');
+  y = drawPaymentTermsBlock(doc, m, y);
+  drawFinalSummaryPanel(doc, m, y, meta, {
+  netFabricTotal: combinedNetFabricTotal,
+  clothTotal: combinedNetFabricTotal,
+  otherTotal: combinedOtherTotal,
+  base: combinedBaseTotal,
+  discountAmount: 0,
+  afterDiscount: combinedNetFabricTotal + combinedOtherTotal,
+  gstAmount: combinedGstTotal,
+  roundOff: combinedRoundOffTotal,
+  finalTotal: combinedGrandTotal,
+}, sigDataURL);
+
+  return doc;
+}
+
 /* =========================
    Small components
    ========================= */
@@ -2006,7 +2178,7 @@ function FabricProcessingTab({ globalFabricItems, onUpdateGlobalItems, onClearAl
   );
 }
 
-function PaymentsTab({ allQuotes, paymentsStore, setPaymentsStore }) {
+function PaymentsTab({ allQuotes, paymentsStore, setPaymentsStore, settings }) {
   const [selectedCustomer, setSelectedCustomer] = useState("");
   const [paymentForm, setPaymentForm] = useState({
     amount: "",
@@ -2178,6 +2350,29 @@ function PaymentsTab({ allQuotes, paymentsStore, setPaymentsStore }) {
               ))}
             </tbody>
           </table>
+          {/* After the quotes table, add: */}
+{(selectedGroup?.quotes || []).length > 1 && (
+  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+    <button
+      className="btn btn-primary btn-sm"
+      onClick={async () => {
+        try {
+          const quoteRecords = (selectedGroup?.quotes || [])
+            .map(q => allQuotes[q.quoteNo])
+            .filter(Boolean);
+          if (quoteRecords.length < 2) { alert("Need at least 2 saved quotes."); return; }
+          const doc = await generateCombinedPDF(quoteRecords, settings);  // pass settings as prop
+          doc.save(`Combined_${customerKey}_${new Date().toISOString().slice(0,10)}.pdf`);
+        } catch (err) {
+          console.error(err);
+          alert("Could not generate combined PDF.");
+        }
+      }}
+    >
+      <Download size={14} /> Combined PDF (All Quotes)
+    </button>
+  </div>
+)}
         </div>
       </Box>
 
@@ -2977,6 +3172,7 @@ const setPaymentsStore = useCallback((updater) => {
     allQuotes={allQuotes}
     paymentsStore={paymentsStore}
     setPaymentsStore={setPaymentsStore}
+    settings={settings}
   />
 )}
 
