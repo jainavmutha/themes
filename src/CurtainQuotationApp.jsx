@@ -1468,6 +1468,57 @@ const GLOBAL_CSS = `
     grid-template-columns: 1fr !important;
   }
 }
+  /* Saved Quotes: colour-coded status dropdowns */
+.status-select {
+  min-width: 118px !important;
+  height: 36px !important;
+  padding: 6px 34px 6px 12px !important;
+  border-radius: 999px !important;
+  font-weight: 900 !important;
+  font-size: 12px !important;
+  letter-spacing: 0.01em !important;
+  border: 1px solid transparent !important;
+  box-shadow: none !important;
+  cursor: pointer !important;
+}
+
+.status-draft {
+  background: #F3F4F6 !important;
+  color: #374151 !important;
+  border-color: #D1D5DB !important;
+}
+
+.status-sent {
+  background: #EFF6FF !important;
+  color: #1D4ED8 !important;
+  border-color: #BFDBFE !important;
+}
+
+.status-approved {
+  background: #ECFDF5 !important;
+  color: #065F46 !important;
+  border-color: #6EE7B7 !important;
+}
+
+.status-rejected {
+  background: #FEF2F2 !important;
+  color: #991B1B !important;
+  border-color: #FECACA !important;
+}
+
+.status-cancelled {
+  background: #FFF7ED !important;
+  color: #92400E !important;
+  border-color: #FED7AA !important;
+}
+
+.status-select:hover {
+  filter: brightness(0.98);
+}
+
+.status-select:focus {
+  box-shadow: 0 0 0 4px rgba(183,7,102,0.08) !important;
+}
 `;
 
 /* =========================
@@ -3542,14 +3593,14 @@ export default function CurtainQuotationApp() {
                         <td className="history-row-customer">{rec.customer?.name || "—"}</td>
                         <td>
                           <select
-                            className="select-xs"
-                            value={rec.status || "Draft"}
-                            onChange={e => handleUpdateQuoteStatus(rec.quoteNo, e.target.value)}
-                          >
-                            {QUOTE_STATUSES.map(status => (
-                              <option key={status} value={status}>{status}</option>
-                            ))}
-                          </select>
+  className={`select-xs status-select status-${String(rec.status || "Draft").toLowerCase()}`}
+  value={rec.status || "Draft"}
+  onChange={e => handleUpdateQuoteStatus(rec.quoteNo, e.target.value)}
+>
+  {QUOTE_STATUSES.map(status => (
+    <option key={status} value={status}>{status}</option>
+  ))}
+</select>
                         </td>
                         <td className="history-row-date">
                           {rec.updatedAt ? new Date(rec.updatedAt).toLocaleDateString("en-IN") : "—"}
