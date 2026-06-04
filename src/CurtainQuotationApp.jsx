@@ -1636,6 +1636,100 @@ const GLOBAL_CSS = `
       padding: 0 12px !important;
     }
   }
+  /* Top action buttons: clearer semantic colours */
+  .hero-actions {
+    gap: 9px !important;
+  }
+
+  .hero-actions .user-pill {
+    background: linear-gradient(135deg, #FFFFFF 0%, #F8F5F1 100%) !important;
+    border-color: #E2D8CE !important;
+    color: #4B4743 !important;
+  }
+
+  .hero-actions .btn {
+    border-radius: 14px !important;
+    font-weight: 900 !important;
+  }
+
+  /* 1. Logout */
+  .hero-actions > button:nth-of-type(1) {
+    background: #FFFFFF !important;
+    color: #6B5F58 !important;
+    border: 1px solid #D8CEC4 !important;
+    box-shadow: 0 5px 14px rgba(46,46,46,0.045) !important;
+  }
+
+  .hero-actions > button:nth-of-type(1):hover {
+    background: #F8F5F1 !important;
+    color: #2E2E2E !important;
+    border-color: #BFB2A7 !important;
+  }
+
+  /* 2. New Quote */
+  .hero-actions > button:nth-of-type(2) {
+    background: #FFF8FC !important;
+    color: var(--primary) !important;
+    border: 1px solid rgba(183,7,102,0.26) !important;
+    box-shadow: 0 6px 16px rgba(183,7,102,0.06) !important;
+  }
+
+  .hero-actions > button:nth-of-type(2):hover {
+    background: #FFEAF4 !important;
+    border-color: rgba(183,7,102,0.45) !important;
+  }
+
+  /* 3. Add Room */
+  .hero-actions > button:nth-of-type(3) {
+    background: linear-gradient(135deg, var(--primary) 0%, #8E054F 100%) !important;
+    color: #FFFFFF !important;
+    border: 1px solid var(--primary) !important;
+    box-shadow: 0 10px 24px rgba(183,7,102,0.22) !important;
+  }
+
+  .hero-actions > button:nth-of-type(3):hover {
+    background: linear-gradient(135deg, #CB0A73 0%, #9B0457 100%) !important;
+  }
+
+  /* 4. Full PDF */
+  .hero-actions > button:nth-of-type(4) {
+    background: #F2FBFA !important;
+    color: var(--accent) !important;
+    border: 1px solid rgba(0,126,124,0.28) !important;
+    box-shadow: 0 6px 16px rgba(0,126,124,0.08) !important;
+  }
+
+  .hero-actions > button:nth-of-type(4):hover {
+    background: #E3F7F6 !important;
+    border-color: rgba(0,126,124,0.46) !important;
+  }
+
+  /* 5. Save */
+  .hero-actions > button:nth-of-type(5) {
+    background: linear-gradient(135deg, #2E2E2E 0%, #161616 100%) !important;
+    color: #FFFFFF !important;
+    border: 1px solid #2E2E2E !important;
+    box-shadow: 0 10px 24px rgba(46,46,46,0.18) !important;
+  }
+
+  .hero-actions > button:nth-of-type(5):hover {
+    background: linear-gradient(135deg, #3A3A3A 0%, #1F1F1F 100%) !important;
+  }
+
+  .hero-actions > button:nth-of-type(3),
+  .hero-actions > button:nth-of-type(5) {
+    padding-left: 20px !important;
+    padding-right: 20px !important;
+  }
+
+  .hero-actions > button:nth-of-type(4) svg {
+    color: var(--accent) !important;
+  }
+
+  .hero-actions > button:nth-of-type(3) svg,
+  .hero-actions > button:nth-of-type(5) svg {
+    color: #FFFFFF !important;
+  }
 `;
 
 /* =========================
