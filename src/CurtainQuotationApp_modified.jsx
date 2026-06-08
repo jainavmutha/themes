@@ -387,12 +387,6 @@ const BRAND = {
   gstin: "GSTIN: 27AAACT1234F1Z5",
   paymentQrUrl: normalizeImageUrl(DEFAULT_PAYMENT_QR_URL),
   paymentUpiId: DEFAULT_PAYMENT_UPI_ID,
-  bankAccountName: "Themes Furnishings & Decor",
-bankName: "HDFC BANK",
-bankBranch: "Pune Branch",
-bankAddress: "Boat Club Road, Pune 411001",
-bankAccountNumber: "50200047416320",
-bankIfsc: "HDFC0000039",
 };
 
 const GLOBAL_CSS = `
@@ -2202,7 +2196,7 @@ function drawGroupedSummarySection(doc, m, y, rooms, settings, commercials, misc
   const drawTableHeader=(startY,columns)=>{doc.setFillColor(...pdfColor(BRAND.header));doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(m,startY,tw,headerH,'FD');doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(80,80,80);columns.forEach(col=>{if(col.align==='right')rightText(col.title,col.x+col.w-8,startY+14);else pdfText(doc,col.title,col.x+8,startY+14);});columns.slice(0,-1).forEach(col=>doc.line(col.x+col.w,startY,col.x+col.w,startY+headerH));return startY+headerH;};
   const wrapText=(text,maxW)=>{const words=String(text??'').split(' '),lines=[];let cur='';words.forEach(word=>{const t=cur?`${cur} ${word}`:word;if(doc.getTextWidth(t)<=maxW)cur=t;else{if(cur)lines.push(cur);let w=word;while(doc.getTextWidth(w)>maxW&&w.length>4)w=w.slice(0,-2)+'...';cur=w;}});if(cur)lines.push(cur);return lines.length?lines:[''];};
   const drawDataRow=(startY,rowIdx,cells,colDefs)=>{let maxLines=1;const wc=cells.map((cell,i)=>{const l=wrapText(String(cell??''),colDefs[i].w-16);if(l.length>maxLines)maxLines=l.length;return l;});const rowH=Math.max(baseRowH,maxLines*lineH+8);doc.setFillColor(rowIdx%2===0?255:250,rowIdx%2===0?255:250,rowIdx%2===0?255:250);doc.rect(m,startY,tw,rowH,'F');doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(m,startY,tw,rowH,'S');colDefs.slice(0,-1).forEach(col=>doc.line(col.x+col.w,startY,col.x+col.w,startY+rowH));doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(30,30,30);cells.forEach((_,i)=>{const col=colDefs[i];const lines=wc[i];const ty=startY+lineH;if(col.align==='right')lines.forEach((l,li)=>rightText(l,col.x+col.w-8,ty+li*lineH));else lines.forEach((l,li)=>pdfText(doc,l,col.x+8,ty+li*lineH));});return rowH;};
-  y=ensureSpace(50); y=drawSectionHeader(doc,m,y,'SUMMARY');
+  y=ensureSpace(50); y=drawSectionHeader(doc,m,y,'FABRIC SUMMARY (ROOM-WISE)');
   const colRoomW2=110,colFabricW=130,colClothW=70,colRateW=80,colAmountW=tw-110-130-70-80;
   const colRoomX2=m,colFabricX=colRoomX2+colRoomW2,colClothX=colFabricX+colFabricW,colRateX2=colClothX+colClothW,colAmountX2=colRateX2+colRateW;
   const roomFabricColDefs=[{title:'Room',x:colRoomX2,w:colRoomW2,align:'left'},{title:'Fabric',x:colFabricX,w:colFabricW,align:'left'},{title:'Cloth (m)',x:colClothX,w:colClothW,align:'right'},{title:'Rate/m',x:colRateX2,w:colRateW,align:'right'},{title:'Amount',x:colAmountX2,w:colAmountW,align:'right'}];
@@ -2592,7 +2586,7 @@ async function generatePerformaInvoice(rooms, meta, settings, miscellaneousCosts
       descLines.slice(0, 2).forEach((l, li) => pdfText(doc, l, xDesc + 6, y + 15 + li * lineH));
 
       /* HSN (fabric / blind / wallpaper) */
-      const hsnCode = fab.hsnCode || invoiceHsn || "-";
+      const hsnCode = fab.isWallpaper ? '4814' : fab.blindType ? '6303' : '6303';
       pdfText(doc, hsnCode, xHsn + 4, y + 15);
 
       /* Qty */
@@ -2662,72 +2656,22 @@ async function generatePerformaInvoice(rooms, meta, settings, miscellaneousCosts
 
   /* ── TOTALS PANEL + QR side by side ── */
   y += 12;
-  const totalsW = 240, qrBlockW = 250, gap = 14;
+  const totalsW = 240, qrBlockW = 148, gap = 12;
   const totalsX  = pw - m - totalsW;
   const qrBlockX = totalsX - qrBlockW - gap;
-  const paymentBlockH = 128;
 
   /* QR block */
   if (paymentQrURL) {
     const qrSize = 120;
     doc.setFillColor(255, 250, 245); doc.setDrawColor(...pdfColor(BRAND.border));
-    doc.roundedRect(qrBlockX, y, qrBlockW, paymentBlockH, 6, 6, 'FD');
-
-doc.setFont('helvetica', 'bold');
-
-doc.setFontSize(8.5);
-
-doc.setTextColor(...pdfColor(BRAND.primary));
-
-pdfText(doc, 'Payment Details', qrBlockX + 10, y + 14);
-
-doc.setFont('helvetica', 'normal');
-
-doc.setFontSize(7.2);
-
-doc.setTextColor(55, 55, 55);
-
-const bankLines = [
-
-  'Themes Furnishings & Decor',
-
-  'HDFC BANK',
-
-  'Pune Branch',
-
-  'Boat Club Road',
-
-  'Pune 411001',
-
-  'A/c No. 50200047416320',
-
-  'IFSC: HDFC0000039',
-
-];
-
-const bankX = qrBlockX + 10;
-
-let bankY = y + 30;
-
-bankLines.forEach(line => {
-
-  pdfText(doc, line, bankX, bankY);
-
-  bankY += 10;
-
-});
-
-const qrSizeSmall = 92;
-
-const qrX = qrBlockX + qrBlockW - qrSizeSmall - 10;
-
-const qrY = y + 24;
-
-try {
-
-  doc.addImage(paymentQrURL, 'PNG', qrX, qrY, qrSizeSmall, qrSizeSmall);
-
-} catch (_) {}
+    doc.roundedRect(qrBlockX, y, qrBlockW, qrSize + 28, 6, 6, 'FD');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...pdfColor(BRAND.primary));
+    pdfText(doc, 'Scan to Pay', qrBlockX + qrBlockW / 2, y + 14, { align: 'center' });
+    try { doc.addImage(paymentQrURL, 'PNG', qrBlockX + (qrBlockW - qrSize) / 2, y + 18, qrSize, qrSize); } catch (_) {}
+    if (meta.company.paymentUpiId) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(80, 80, 80);
+      pdfText(doc, meta.company.paymentUpiId, qrBlockX + qrBlockW / 2, y + 20 + qrSize, { align: 'center' });
+    }
   }
 
   /* totals box */
@@ -2775,41 +2719,14 @@ try {
   y += totalsH + 16;
 
   /* ── DELIVERY TERMS ── */
-  y += 12;
+  doc.setFillColor(239, 246, 255); doc.setDrawColor(191, 219, 254);
+  doc.roundedRect(m, y, tw, 24, 4, 4, 'FD');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(29, 78, 216);
+  pdfText(doc, 'Delivery Terms: ', m + 8, y + 16);
+  doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 30, 30);
+  pdfText(doc, 'Goods will be delivered within 7 working days from the date of order confirmation and advance payment.', m + 8 + doc.getTextWidth('Delivery Terms: '), y + 16);
+  y += 34;
 
-const deliveryH = 44;
-
-doc.setFillColor(239, 246, 255);
-
-doc.setDrawColor(191, 219, 254);
-
-doc.roundedRect(m, y, tw, deliveryH, 4, 4, 'FD');
-
-doc.setFont('helvetica', 'bold');
-
-doc.setFontSize(8.5);
-
-doc.setTextColor(29, 78, 216);
-
-pdfText(doc, 'Delivery Terms', m + 8, y + 14);
-
-doc.setFont('helvetica', 'normal');
-
-doc.setFontSize(8);
-
-doc.setTextColor(45, 45, 45);
-
-const deliveryLines = doc.splitTextToSize(
-
-  'Goods will be delivered within 7 working days from the date of order confirmation and advance payment.',
-
-  tw - 16
-
-);
-
-doc.text(deliveryLines, m + 8, y + 28);
-
-y += deliveryH + 10;
   /* ── GST BILL DETAILS block (if needed) ── */
   if (meta.commercials.needGstBill) {
     doc.setFillColor(240, 253, 244); doc.setDrawColor(187, 247, 208);
@@ -2956,22 +2873,7 @@ const FabricRow = React.memo(function FabricRow({ fabric, room, settings, commer
         {canRemove && <button className="btn-remove-fabric" onClick={onRemove} title="Remove fabric">×</button>}
       </div>
       <div className="fabric-row-grid">
-        {fabric.isMattress ? (
-          <>
-            <Field label="Mattress Name"><input className="input" value={fabric.materialName || ""} onChange={e => onChange({ materialName: e.target.value })} placeholder="e.g. Mattress" /></Field>
-            <Field label="Quantity" hint="nos"><UnitInput unit="nos" value={fabric.mattressQty ?? ""} onChange={e => onChange({ mattressQty: e.target.value })} inputMode="decimal" placeholder="e.g. 1" /></Field>
-            <Field label="Price"><UnitInput unit="Rs" value={fabric.mattressPrice ?? ""} onChange={e => onChange({ mattressPrice: e.target.value })} inputMode="decimal" placeholder="e.g. 25000" /></Field>
-            <Field label="HSN Code"><input className="input" value={fabric.hsnCode || ""} onChange={e => onChange({ hsnCode: e.target.value })} placeholder="e.g. 9404" /></Field>
-            {showGstPicker && (
-              <Field label="GST Category">
-                <select className="select" value={fabric.gstCategory?.id || gstCategories.find(c=>c.id==="mattress")?.id || gstCategories[0]?.id || ""}
-                  onChange={e => onChange({ gstCategory: gstCategories.find(c => c.id === e.target.value) })}>
-                  {gstCategories.map(c => <option key={c.id} value={c.id}>{c.label} ({c.rate}%)</option>)}
-                </select>
-              </Field>
-            )}
-          </>
-        ) : fabric.isWallpaper ? (
+        {fabric.isWallpaper ? (
           <>
             <Field label="Wallpaper Name"><input className="input" value={fabric.materialName || ""} onChange={e => onChange({ materialName: e.target.value })} placeholder="e.g. Floral Wallpaper" /></Field>
             <Field label="Quantity" hint="rolls"><UnitInput unit="rolls" value={fabric.wallpaperRollQty ?? ""} onChange={e => onChange({ wallpaperRollQty: e.target.value })} inputMode="decimal" placeholder="e.g. 3" /></Field>
