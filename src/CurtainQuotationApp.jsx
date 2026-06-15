@@ -237,6 +237,76 @@ function getQuoteFinalTotal(quote) {
     quote?.finalTotal || quote?.total || 0
   );
 }
+function getQuoteEstimatedProfit(quote) {
+  try {
+    const directProfit = Number(
+      quote?.snapshot?.summary?.estimatedProfit ||
+      quote?.summary?.estimatedProfit ||
+      quote?.all?.summary?.estimatedProfit ||
+      quote?.totals?.summary?.estimatedProfit ||
+      quote?.snapshot?.estimatedProfit ||
+      quote?.estimatedProfit ||
+      0
+    );
+
+    if (Number.isFinite(directProfit) && directProfit > 0) {
+      return Math.round(directProfit);
+    }
+
+    const rooms = Array.isArray(quote?.rooms)
+      ? quote.rooms
+      : Array.isArray(quote?.snapshot?.rooms)
+        ? quote.snapshot.rooms
+        : Array.isArray(quote?.all?.rooms)
+          ? quote.all.rooms
+          : Array.isArray(quote?.totals?.rooms)
+            ? quote.totals.rooms
+            : [];
+
+    const commercials =
+      quote?.commercials ||
+      quote?.snapshot?.commercials ||
+      quote?.all?.commercials ||
+      quote?.totals?.commercials ||
+      {};
+
+    const miscellaneousCosts = Array.isArray(quote?.miscellaneousCosts)
+      ? quote.miscellaneousCosts
+      : Array.isArray(quote?.snapshot?.miscellaneousCosts)
+        ? quote.snapshot.miscellaneousCosts
+        : Array.isArray(quote?.all?.miscellaneousCosts)
+          ? quote.all.miscellaneousCosts
+          : Array.isArray(quote?.totals?.miscellaneousCosts)
+            ? quote.totals.miscellaneousCosts
+            : [];
+
+    const quoteSettings = mergeSettingsWithDefaults(
+      quote?.settings ||
+      quote?.snapshot?.settings ||
+      quote?.all?.settings ||
+      quote?.totals?.settings ||
+      DEFAULT_SETTINGS
+    );
+
+    if (rooms.length && typeof computeAllTotals === "function") {
+      const totals = computeAllTotals(
+        rooms,
+        commercials,
+        quoteSettings,
+        miscellaneousCosts
+      );
+
+      return Math.round(
+        Number(totals?.estimatedProfit || totals?.summary?.estimatedProfit || 0)
+      );
+    }
+
+    return 0;
+  } catch (error) {
+    console.error("Estimated profit calculation failed", error);
+    return 0;
+  }
+}
 
 /* =========================
    SETTINGS  (gstCategories added)
@@ -2015,6 +2085,7 @@ function computeGstBreakdown(rooms, commercials, settings, miscellaneousCosts = 
 }
 
 function computeAllTotals(rooms, commercials, settings, miscellaneousCosts = []) {
+  
   const effectiveRooms = rooms.filter(r => r.include !== false);
   const roomTotals = effectiveRooms.map(r => ({ room: r, cost: computeRoomCost(r, settings) }));
   const clothTotal = roomTotals.reduce((s, x) => s + x.cost.clothCost, 0);
@@ -2023,6 +2094,13 @@ function computeAllTotals(rooms, commercials, settings, miscellaneousCosts = [])
   const trackTotal = roomTotals.reduce((s, x) => s + x.cost.trackCost, 0);
   const installTotal = roomTotals.reduce((s, x) => s + x.cost.installationCost, 0);
   const miscTotal = (miscellaneousCosts || []).reduce((sum, item) => sum + toNum(item.rate) * (toNum(item.quantity) || 1), 0);
+  const rawProfitDiscountAmount =
+  commercials?.discountType === "percent"
+    ? clothTotal * (toNum(commercials?.discountValue) / 100)
+    : toNum(commercials?.discountValue);
+
+const profitDiscountAmount = Math.min(Math.max(0, rawProfitDiscountAmount), clothTotal);
+const discountedFabricBase = Math.max(0, clothTotal - profitDiscountAmount);
   const otherTotal = stitchingTotal + liningTotal + trackTotal + installTotal + miscTotal;
   const { discountType, discountValue } = commercials;
   const roundOff = toNum(commercials?.roundOff);
@@ -2049,6 +2127,11 @@ function computeAllTotals(rooms, commercials, settings, miscellaneousCosts = [])
       afterDiscount: Math.round(afterDiscount), gstAmount: Math.round(gstAmount),
       roundOff: Math.round(roundOff), finalTotal: Math.round(afterDiscount + gstAmount + roundOff),
       gstBreakdown,
+      discountedFabricBase,
+otherBaseForProfit: otherTotal,
+estimatedFabricProfit: Math.round(discountedFabricBase * (0.47-(discountValue/100))),
+estimatedOtherProfit: Math.round(otherTotal * 0.56),
+estimatedProfit: Math.round((discountedFabricBase * (0.47-(discountValue/100))) + (otherTotal * 0.56)),
     }
   };
 }
@@ -2242,7 +2325,7 @@ function drawGroupedSummarySection(doc, m, y, rooms, settings, commercials, misc
       y+=totalRoomH;globalRowIdx++;
     }
   });
-  {const rowH=baseRowH;doc.setFillColor(...pdfColor('#FFF7ED'));doc.rect(m,y,tw,rowH,'F');doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(m,y,tw,rowH,'S');doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(30,30,30);pdfText(doc,'Fabric Sub-Total',m+8,y+14);rightText(`Rs.${numberWithCommas(fabricTotal)}`,m+tw-8,y+14);y+=rowH;}
+  {const rowH=baseRowH;doc.setFillColor(...pdfColor('#FFF7ED'));doc.rect(m,y,tw,rowH,'F');doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(m,y,tw,rowH,'S');doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(30,30,30);pdfText(doc,'Sub-Total',m+8,y+14);rightText(`Rs.${numberWithCommas(fabricTotal)}`,m+tw-8,y+14);y+=rowH;}
   if(hasDiscount){const rowH=baseRowH;const dl=discountType==="percent"?`Discount (${Number(discountValue||0)}%)`:'Discount';doc.setFillColor(255,240,240);doc.rect(m,y,tw,rowH,'F');doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(m,y,tw,rowH,'S');doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(180,30,30);pdfText(doc,dl,m+8,y+14);rightText(`-Rs.${numberWithCommas(discountAmount)}`,m+tw-8,y+14);y+=rowH;doc.setFillColor(...pdfColor('#E8F5E9'));doc.rect(m,y,tw,rowH,'F');doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(m,y,tw,rowH,'S');doc.setFont('helvetica','bold');doc.setFontSize(9.5);doc.setTextColor(20,100,40);pdfText(doc,'Net Fabric Total (after discount)',m+8,y+15);rightText(`Rs.${numberWithCommas(netFabricTotal)}`,m+tw-8,y+15);y+=rowH;}
   y+=12;y=ensureSpace(50);y=drawSectionHeader(doc,m,y,'OTHER COSTS');
   const ocColDesc=tw-90-90-90,ocColQty=90,ocColRate=90,ocColAmount=90;
@@ -2537,7 +2620,7 @@ async function generatePerformaInvoice(rooms, meta, settings, miscellaneousCosts
   doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...pdfColor(BRAND.muted));
   pdfText(doc, 'INVOICE DETAILS', m + colW3 * 2 + 10, y + 14);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(60, 60, 60);
-  pdfText(doc, `Invoice No: ${meta.quoteNo || '—'}`, m + colW3 * 2 + 10, y + 28);
+  pdfText(doc, `Proforma No: ${meta.quoteNo || '—'}`, m + colW3 * 2 + 10, y + 28);
   pdfText(doc, `Place of Supply: ${meta.commercials.place || 'Pune'}`, m + colW3 * 2 + 10, y + 42);
   if (meta.commercials.needGstBill) pdfText(doc, 'Type: GST Invoice', m + colW3 * 2 + 10, y + 56);
 
@@ -2657,7 +2740,7 @@ async function generatePerformaInvoice(rooms, meta, settings, miscellaneousCosts
   doc.setDrawColor(...pdfColor(BRAND.grid)); doc.rect(m, y, tw, rowH, 'S');
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
   pdfText(doc, 'Sub-total', xDesc + 6, y + 15);
-  rightText(`Rs.${numberWithCommas(summary.afterDiscount)}`, xAmt + colAmt - 6, y + 15);
+  rightText(`Rs.${numberWithCommas(summary.netFabricTotal)}`, xAmt + colAmt - 6, y + 15);
   y += rowH;
 
   /* ── TOTALS PANEL + QR side by side ── */
@@ -2733,7 +2816,7 @@ try {
   /* totals box */
   const tLines = [];
   if (summary.discountAmount > 0) {
-    tLines.push({ label: 'Fabric Sub-total', value: `Rs.${numberWithCommas(summary.clothTotal)}`, normal: true });
+    tLines.push({ label: 'Sub-total', value: `Rs.${numberWithCommas(summary.clothTotal)}`, normal: true });
     tLines.push({ label: `Discount (${meta.commercials.discountType === 'percent' ? meta.commercials.discountValue + '%' : 'Fixed'})`, value: `-Rs.${numberWithCommas(summary.discountAmount)}`, red: true });
   }
   tLines.push({ label: 'Taxable Amount', value: `Rs.${numberWithCommas(summary.afterDiscount)}`, bold: true });
@@ -3541,12 +3624,21 @@ function DashboardTab({ allQuotes }) {
   const chartInstances = useRef({});
   const stats = useMemo(() => {
     const quotes = Object.values(allQuotes || {});
-    const approved = quotes.filter(q => q.status === 'Approved');
-    const totalRevenue = approved.reduce((s, q) => s + (q.snapshot?.summary?.finalTotal || 0), 0);
+    const approvedQuotes = quotes.filter(q => (q?.status || "Draft") === "Approved");
+    const approvedEstimatedProfit = approvedQuotes.reduce((sum, q) => sum + getQuoteEstimatedProfit(q), 0);
+    const totalRevenue = approvedQuotes.reduce((s, q) => s + (q.snapshot?.summary?.finalTotal || 0), 0);
     const avgQuote = quotes.length ? quotes.reduce((s, q) => s + (q.snapshot?.summary?.finalTotal || 0), 0) / quotes.length : 0;
     const thisMonth = new Date().toISOString().slice(0, 7);
     const thisMonthQuotes = quotes.filter(q => (q.updatedAt || '').slice(0, 7) === thisMonth);
-    return { total: quotes.length, approved: approved.length, totalRevenue, avgQuote, thisMonthQuotes: thisMonthQuotes.length };
+    return {
+      total: quotes.length,
+      approved: approvedQuotes.length,
+      approvedQuotesCount: approvedQuotes.length,
+      approvedEstimatedProfit,
+      totalRevenue,
+      avgQuote,
+      thisMonthQuotes: thisMonthQuotes.length,
+    };
   }, [allQuotes]);
   const chartData = useMemo(() => {
     const quotes = Object.values(allQuotes || {});
@@ -3586,8 +3678,35 @@ function DashboardTab({ allQuotes }) {
         <div className="dash-kpi"><div className="dash-kpi-label">Total Quotes</div><div className="dash-kpi-value">{stats.total}</div></div>
         <div className="dash-kpi"><div className="dash-kpi-label">Approved</div><div className="dash-kpi-value" style={{ color: '#059669' }}>{stats.approved}</div></div>
         <div className="dash-kpi"><div className="dash-kpi-label">Approved Revenue</div><div className="dash-kpi-value">{currency(stats.totalRevenue)}</div></div>
+        
         <div className="dash-kpi"><div className="dash-kpi-label">Avg Quote Value</div><div className="dash-kpi-value">{currency(stats.avgQuote)}</div><div className="dash-kpi-sub">across all quotes</div></div>
       </div>
+
+      <div className="box" style={{ marginBottom: 16 }}>
+  <div className="box-header">
+    <h3>Estimated Profits</h3>
+  </div>
+
+  <div className="box-body">
+    <div className="summary-inner">
+      
+
+      <div className="summary-list">
+        <div className="summary-item">
+          <span className="summary-name">Approved Quotations</span>
+          <span className="summary-total">{stats.approvedQuotesCount}</span>
+        </div>
+
+        <div className="summary-item">
+          <span className="summary-name">Estimated Profit</span>
+          <span className="summary-total">{currency(stats.approvedEstimatedProfit)}</span>
+        </div>
+      </div>
+
+      
+    </div>
+  </div>
+</div>
       {noData ? <div className="empty-box">No saved quotes yet. Save some quotes to see your dashboard.</div> : (
         <>
           <div className="dash-charts-grid">
