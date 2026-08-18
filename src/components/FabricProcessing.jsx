@@ -166,6 +166,24 @@ function getSavedQuoteFabric(item, allQuotes) {
   return { room, fabric };
 }
 
+function shouldHideStitching(item, fabric) {
+  const itemType = String(item?.type || "").toLowerCase();
+
+  return Boolean(
+    item?.blindType ||
+    item?.isRomanBlind ||
+    item?.isWallpaper ||
+    item?.isMattress ||
+    fabric?.blindType ||
+    fabric?.isRomanBlind ||
+    fabric?.isWallpaper ||
+    fabric?.isMattress ||
+    itemType.includes("blind") ||
+    itemType.includes("wallpaper") ||
+    itemType.includes("mattress")
+  );
+}
+
 function getResolvedItemDetails(item, allQuotes) {
   const { room, fabric } = getSavedQuoteFabric(item, allQuotes);
 
@@ -191,12 +209,14 @@ function getResolvedItemDetails(item, allQuotes) {
       fabric?.label
     ),
 
-    stitching: firstAvailable(
-      getItemStitching(item),
-      fabric?.stitching?.label,
-      fabric?.stitchingLabel,
-      fabric?.stitchingType
-    ),
+    stitching: shouldHideStitching(item, fabric)
+      ? ""
+      : firstAvailable(
+          getItemStitching(item),
+          fabric?.stitching?.label,
+          fabric?.stitchingLabel,
+          fabric?.stitchingType
+        ),
 
     quotedRate: firstAvailable(
       getItemQuotedRate(item),

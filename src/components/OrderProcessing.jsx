@@ -101,7 +101,10 @@ function OrderProcessingTab({ rooms, quoteMeta, quoteNo, currentQuoteStatus, all
             formatFabricDimension(fab.lengthInch, fab.lengthUnit) ||
             String(getRoomLength(room) || ''),
           quotedFabricName: fab.materialName || '',
-          stitchingType: getStitchingLabel(fab) || '',
+          stitchingType:
+            fab.blindType || fab.isRomanBlind || fab.isWallpaper || fab.isMattress
+              ? ''
+              : getStitchingLabel(fab) || '',
           quotedFabricRate: String(fab.materialPrice || ''),
 
           fabricName: '',
