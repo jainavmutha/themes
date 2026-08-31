@@ -43,9 +43,37 @@ function DashboardTab({ allQuotes }) {
   }, [allQuotes]);
   const chartData = useMemo(() => {
     const quotes = Object.values(allQuotes || {});
+    const now = new Date();
     const months = [];
-    for (let i = 5; i >= 0; i--) { const d = new Date(); d.setMonth(d.getMonth() - i); months.push(d.toISOString().slice(0, 7)); }
-    const monthlyRevenue = months.map(m => ({ label: new Date(m + '-01').toLocaleDateString('en-IN', { month: 'short', year: '2-digit' }), value: quotes.filter(q => (q.updatedAt || '').slice(0, 7) === m).reduce((s, q) => s + (q.snapshot?.summary?.finalTotal || 0), 0), count: quotes.filter(q => (q.updatedAt || '').slice(0, 7) === m).length }));
+
+    for (let i = 5; i >= 0; i--) {
+      const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const year = monthDate.getFullYear();
+      const month = String(monthDate.getMonth() + 1).padStart(2, '0');
+
+      months.push({
+        key: `${year}-${month}`,
+        label: monthDate.toLocaleDateString('en-IN', {
+          month: 'short',
+          year: '2-digit',
+        }),
+      });
+    }
+
+    const monthlyRevenue = months.map(({ key, label }) => {
+      const monthQuotes = quotes.filter(
+        q => (q.updatedAt || '').slice(0, 7) === key
+      );
+
+      return {
+        label,
+        value: monthQuotes.reduce(
+          (sum, q) => sum + (q.snapshot?.summary?.finalTotal || 0),
+          0
+        ),
+        count: monthQuotes.length,
+      };
+    });
     const statusCounts = QUOTE_STATUSES.reduce((acc, s) => { acc[s] = quotes.filter(q => (q.status || 'Draft') === s).length; return acc; }, {});
     const custMap = {};
     quotes.forEach(q => { const name = q.customer?.name || 'Unknown'; if (!custMap[name]) custMap[name] = 0; custMap[name] += q.snapshot?.summary?.finalTotal || 0; });
