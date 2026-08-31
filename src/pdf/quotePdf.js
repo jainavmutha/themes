@@ -429,6 +429,13 @@ function drawFinalSummaryPanel(doc, m, y, meta, summary, sigDataURL) {
   const grossOtherTotal = Math.round(
     toNum(summary.otherTotal || 0) + toNum(summary.miscDiscountTotal || 0)
   );
+  const roundedNetFabricTotal = Math.round(
+    toNum(summary.netFabricTotal ?? summary.clothTotal)
+  );
+  const roundedOtherTotal = Math.round(toNum(summary.otherTotal));
+  const roundedGstAmount = Math.round(toNum(summary.gstAmount));
+  const roundedRoundOff = Math.round(toNum(summary.roundOff));
+  const roundedFinalTotal = roundedNetFabricTotal + roundedOtherTotal + roundedGstAmount + roundedRoundOff;
   const hasFabricCosts = toNum(summary.netFabricTotal ?? summary.clothTotal) > 0;
   const costsLabel = hasFabricCosts ? 'Other Costs' : 'Costs';
   const sectionW=pw-2*m,gap=16,halfW=(sectionW-gap)/2,leftX=m,rightX=m+halfW+gap,qrSize=132;
@@ -443,7 +450,7 @@ function drawFinalSummaryPanel(doc, m, y, meta, summary, sigDataURL) {
           ? 'Net Fabric (linewise discounts)'
           : 'Net Fabric (after discount)')
         : 'Fabric Total',
-      value: `Rs.${numberWithCommas(summary.netFabricTotal ?? summary.clothTotal)}`,
+      value: `Rs.${numberWithCommas(roundedNetFabricTotal)}`,
       bold: false,
       grandTotal: false,
     });
@@ -453,7 +460,7 @@ function drawFinalSummaryPanel(doc, m, y, meta, summary, sigDataURL) {
     label: toNum(summary.miscDiscountTotal) > 0
       ? `${costsLabel} (after discount)`
       : costsLabel,
-    value: `Rs.${numberWithCommas(summary.otherTotal)}`,
+    value: `Rs.${numberWithCommas(roundedOtherTotal)}`,
     bold: false,
     grandTotal: false,
   });
@@ -473,15 +480,14 @@ function drawFinalSummaryPanel(doc, m, y, meta, summary, sigDataURL) {
       });
     } else if (summary.gstAmount > 0) {
       // Fallback for old quotes with no breakdown
-      lines.push({ label: `GST`, value: `Rs.${numberWithCommas(summary.gstAmount)}`, bold: false, grandTotal: false, isGst: true });
+      lines.push({ label: `GST`, value: `Rs.${numberWithCommas(roundedGstAmount)}`, bold: false, grandTotal: false, isGst: true });
     }
   }
 
-  if (Number(summary.roundOff || 0) !== 0) {
-    const roundOffValue = Number(summary.roundOff || 0);
-    lines.push({ label: "Round Off / Adjustment", value: `${roundOffValue > 0 ? "" : "-"}Rs.${numberWithCommas(Math.abs(roundOffValue))}`, bold: false, grandTotal: false });
+  if (roundedRoundOff !== 0) {
+    lines.push({ label: "Round Off / Adjustment", value: `${roundedRoundOff > 0 ? "" : "-"}Rs.${numberWithCommas(Math.abs(roundedRoundOff))}`, bold: false, grandTotal: false });
   }
-  lines.push({ label: 'GRAND TOTAL', value: `Rs.${numberWithCommas(summary.finalTotal)}`, bold: true, grandTotal: true });
+  lines.push({ label: 'GRAND TOTAL', value: `Rs.${numberWithCommas(roundedFinalTotal)}`, bold: true, grandTotal: true });
 
   const rowH=22,signatureH=62,blockH=Math.max(180,lines.length*rowH+signatureH+8);
   if(y+blockH>ph-24){y=Math.max(m,ph-blockH-24);}
