@@ -169,8 +169,11 @@ export function computeAllTotals(
     clothTotal - discountAmount
   );
 
+  const roundedNetFabricTotal = Math.round(netFabricTotal);
+  const roundedOtherTotal = Math.round(otherTotal);
+
   const afterDiscount =
-    netFabricTotal + otherTotal;
+    roundedNetFabricTotal + roundedOtherTotal;
 
   let gstAmount = 0;
   let gstBreakdown = [];
@@ -216,7 +219,7 @@ export function computeAllTotals(
         Math.round(miscTotal),
 
       otherTotal:
-        Math.round(otherTotal),
+        roundedOtherTotal,
 
       base:
         Math.round(
@@ -232,14 +235,9 @@ export function computeAllTotals(
       discountMode,
 
       netFabricTotal:
-        Math.round(
-          netFabricTotal
-        ),
+        roundedNetFabricTotal,
 
-      afterDiscount:
-        Math.round(
-          afterDiscount
-        ),
+      afterDiscount,
 
       gstAmount:
         Math.round(
@@ -252,11 +250,9 @@ export function computeAllTotals(
         ),
 
       finalTotal:
-        Math.round(
-          afterDiscount +
-            gstAmount +
-            roundOff
-        ),
+        afterDiscount +
+          Math.round(gstAmount) +
+          Math.round(roundOff),
 
       gstBreakdown,
 
