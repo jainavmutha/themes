@@ -8,6 +8,11 @@ function getFabricRawCost(fabric) {
   const explicitCost = toNum(fabric.clothCost);
   if (explicitCost > 0) return explicitCost;
 
+  const mattressQty = toNum(fabric.mattressQty);
+  const mattressPrice = toNum(fabric.mattressPrice);
+  const mattressCost = mattressQty * mattressPrice;
+  if (mattressCost > 0) return mattressCost;
+
   return (
     toNum(fabric.materialPrice) *
     toNum(fabric.clothMeters)
