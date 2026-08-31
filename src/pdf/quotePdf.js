@@ -161,6 +161,7 @@ function drawGroupedSummarySection(doc, m, y, rooms, settings, commercials, misc
   );
   const hasDiscount = discountAmount > 0;
   const isLinewiseDiscount = discountMode === "linewise";
+  const hasFabricCosts = fabricTotal > 0 || netFabricTotal > 0;
   const effectiveRooms = rooms.filter(r=>r.include!==false);
   const roomCosts = effectiveRooms.map(r=>({room:r,cost:computeRoomCost(r,settings)}));
   const otherRows = [];
@@ -168,23 +169,60 @@ function drawGroupedSummarySection(doc, m, y, rooms, settings, commercials, misc
   { const lmap=new Map(); roomCosts.forEach(({room,cost})=>{cost.fabricBreakdowns.forEach(fb=>{const k=fb.lining?.id||'none';if(!lmap.has(k))lmap.set(k,{label:`Lining - ${fb.lining?.label||'N/A'}`,qty:0,qtyUnit:'m',rate:fb.lining?.ratePerMeter||0,amount:0});const row=lmap.get(k);row.qty+=fb.metersOfCloth;row.amount+=fb.liningCost;});}); lmap.forEach(r=>{if(Math.round(r.amount)>0)otherRows.push(r);}); }
   { const tmap=new Map(); roomCosts.forEach(({room,cost})=>{cost.fabricBreakdowns.forEach(fb=>{if(Math.round(fb.trackCost||0)<=0)return;const isBlind=Boolean(fb.isRomanBlind||fb.romanBlindSqFt);const k=isBlind?`roman_track_${fb.track?.id||'none'}`:(fb.track?.id||room.track?.id||'none');const rate=Number.isFinite(fb.track?.ratePerFt)?fb.track.ratePerFt:(Number.isFinite(room.track?.ratePerFt)?room.track.ratePerFt:(settings?.trackRatePerFt||0));if(!tmap.has(k))tmap.set(k,{label:isBlind?`Roman Track - ${fb.track?.label||'N/A'}`:`Track - ${fb.track?.label||room.track?.label||'N/A'}`,qty:0,qtyUnit:'ft',rate,amount:0});const row=tmap.get(k);row.qty += (fb.trackFeet || 0);row.amount+=fb.trackCost;});}); tmap.forEach(r=>{if(Math.round(r.amount)>0)otherRows.push(r);}); }
   { const ti=Math.round(roomCosts.reduce((s,x)=>s+x.cost.installationCost,0)),tq=roomCosts.reduce((s,x)=>s+(x.cost.usedInstallQty||0),0);if(ti>0)otherRows.push({label:'Installation',qty:tq,qtyUnit:'pcs',rate:settings?.installationRatePerTrackFt||0,amount:ti}); }
-  (miscellaneousCosts||[]).forEach((item)=>{
-  const name=String(item.name||'').trim();
-  const rate=toNum(item.rate);
-  const qty=toNum(item.quantity)||1;
-  const unit=item.unit||'nos';
-  const amount=rate*qty;
+  (miscellaneousCosts || []).forEach((item) => {
+    const name = String(item.name || '').trim();
+    const rate = toNum(item.rate);
+    const qty = toNum(item.quantity) || 1;
+    const unit = item.unit || 'nos';
+    const grossAmount = rate * qty;
+    const discountPercent = Math.min(
+      100,
+      Math.max(0, toNum(item?.discountPercent))
+    );
+    const discountAmount = grossAmount * (discountPercent / 100);
+    const amount = Math.max(0, grossAmount - discountAmount);
 
-  if(name&&Math.round(amount)>0) {
-    otherRows.push({label:name,qty,qtyUnit:unit,rate,amount});
-  }
-});
-  const otherCostsTotal = Math.round(otherRows.reduce((s,r)=>s+r.amount,0));
+    if (name && Math.round(amount) > 0) {
+      otherRows.push({
+        label: name,
+        qty,
+        qtyUnit: unit,
+        rate,
+        grossAmount,
+        discountPercent,
+        discountAmount,
+        amount,
+        isMiscellaneous: true,
+      });
+    }
+  });
+  const netOtherCostsTotal = Math.round(otherRows.reduce((s, r) => s + r.amount, 0));
+  const grossOtherCostsTotal = Math.round(
+    otherRows.reduce(
+      (sum, row) =>
+        sum +
+        (row.isMiscellaneous
+          ? toNum(row.grossAmount)
+          : toNum(row.amount)),
+      0
+    )
+  );
+  const miscDiscountTotal = Math.round(
+    otherRows.reduce(
+      (sum, row) =>
+        sum +
+        (row.isMiscellaneous
+          ? toNum(row.discountAmount)
+          : 0),
+      0
+    )
+  );
   const headerH=22,baseRowH=22,lineH=11;
   const drawTableHeader=(startY,columns)=>{doc.setFillColor(...pdfColor(BRAND.header));doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(m,startY,tw,headerH,'FD');doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(80,80,80);columns.forEach(col=>{if(col.align==='right')rightText(col.title,col.x+col.w-8,startY+14);else pdfText(doc,col.title,col.x+8,startY+14);});columns.slice(0,-1).forEach(col=>doc.line(col.x+col.w,startY,col.x+col.w,startY+headerH));return startY+headerH;};
   const wrapText=(text,maxW)=>{const words=String(text??'').split(' '),lines=[];let cur='';words.forEach(word=>{const t=cur?`${cur} ${word}`:word;if(doc.getTextWidth(t)<=maxW)cur=t;else{if(cur)lines.push(cur);let w=word;while(doc.getTextWidth(w)>maxW&&w.length>4)w=w.slice(0,-2)+'...';cur=w;}});if(cur)lines.push(cur);return lines.length?lines:[''];};
   const drawDataRow=(startY,rowIdx,cells,colDefs)=>{let maxLines=1;const wc=cells.map((cell,i)=>{const l=wrapText(String(cell??''),colDefs[i].w-16);if(l.length>maxLines)maxLines=l.length;return l;});const rowH=Math.max(baseRowH,maxLines*lineH+8);doc.setFillColor(rowIdx%2===0?255:250,rowIdx%2===0?255:250,rowIdx%2===0?255:250);doc.rect(m,startY,tw,rowH,'F');doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(m,startY,tw,rowH,'S');colDefs.slice(0,-1).forEach(col=>doc.line(col.x+col.w,startY,col.x+col.w,startY+rowH));doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(30,30,30);cells.forEach((_,i)=>{const col=colDefs[i];const lines=wc[i];const ty=startY+lineH;if(col.align==='right')lines.forEach((l,li)=>rightText(l,col.x+col.w-8,ty+li*lineH));else lines.forEach((l,li)=>pdfText(doc,l,col.x+8,ty+li*lineH));});return rowH;};
-  y=ensureSpace(50); y=drawSectionHeader(doc,m,y,'SUMMARY');
+  if (hasFabricCosts) {
+    y=ensureSpace(50); y=drawSectionHeader(doc,m,y,'SUMMARY');
   const colRoomW2 = isLinewiseDiscount ? 92 : 110;
   const colFabricW = isLinewiseDiscount ? 118 : 130;
   const colClothW = isLinewiseDiscount ? 62 : 70;
@@ -280,49 +318,145 @@ function drawGroupedSummarySection(doc, m, y, rooms, settings, commercials, misc
   });
   {const rowH=baseRowH;doc.setFillColor(...pdfColor('#FFF7ED'));doc.rect(m,y,tw,rowH,'F');doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(m,y,tw,rowH,'S');doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(30,30,30);pdfText(doc,'Sub-Total',m+8,y+14);rightText(`Rs.${numberWithCommas(fabricTotal)}`,m+tw-8,y+14);y+=rowH;}
   if(hasDiscount){const rowH=baseRowH;const dl=isLinewiseDiscount?'Linewise Fabric Discounts':(discountType==="percent"?`Discount (${Number(discountValue||0)}%)`:'Discount');doc.setFillColor(255,240,240);doc.rect(m,y,tw,rowH,'F');doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(m,y,tw,rowH,'S');doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(180,30,30);pdfText(doc,dl,m+8,y+14);rightText(`-Rs.${numberWithCommas(discountAmount)}`,m+tw-8,y+14);y+=rowH;doc.setFillColor(...pdfColor('#E8F5E9'));doc.rect(m,y,tw,rowH,'F');doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(m,y,tw,rowH,'S');doc.setFont('helvetica','bold');doc.setFontSize(9.5);doc.setTextColor(20,100,40);pdfText(doc,'Net Fabric Total (after discount)',m+8,y+15);rightText(`Rs.${numberWithCommas(netFabricTotal)}`,m+tw-8,y+15);y+=rowH;}
-  y+=12;y=ensureSpace(50);y=drawSectionHeader(doc,m,y,'OTHER COSTS');
-  const ocColDesc=tw-90-90-90,ocColQty=90,ocColRate=90,ocColAmount=90;
-  const ocDescX=m,ocQtyX=ocDescX+ocColDesc,ocRateX=ocQtyX+ocColQty,ocAmountX=ocRateX+ocColRate;
-  const otherColDefs=[{title:'Description',x:ocDescX,w:ocColDesc,align:'left'},{title:'Qty',x:ocQtyX,w:ocColQty,align:'right'},{title:'Rate',x:ocRateX,w:ocColRate,align:'right'},{title:'Amount',x:ocAmountX,w:ocColAmount,align:'right'}];
+  }
+  if (hasFabricCosts) y += 12;
+  y = ensureSpace(50);
+  y = drawSectionHeader(doc, m, y, hasFabricCosts ? 'OTHER COSTS' : 'COSTS');
+  const hasMiscDiscount = otherRows.some(
+    row => row.isMiscellaneous && toNum(row.discountPercent) > 0
+  );
+  const ocColQty = 72;
+  const ocColRate = 82;
+  const ocColDiscount = hasMiscDiscount ? 64 : 0;
+  const ocColAmount = 90;
+  const ocColDesc = tw - ocColQty - ocColRate - ocColDiscount - ocColAmount;
+  const ocDescX = m;
+  const ocQtyX = ocDescX + ocColDesc;
+  const ocRateX = ocQtyX + ocColQty;
+  const ocDiscountX = ocRateX + ocColRate;
+  const ocAmountX = ocDiscountX + ocColDiscount;
+  const otherColDefs = [
+    { title: 'Description', x: ocDescX, w: ocColDesc, align: 'left' },
+    { title: 'Qty', x: ocQtyX, w: ocColQty, align: 'right' },
+    { title: 'Rate', x: ocRateX, w: ocColRate, align: 'right' },
+    ...(hasMiscDiscount
+      ? [{ title: 'Disc.', x: ocDiscountX, w: ocColDiscount, align: 'right' }]
+      : []),
+    { title: 'Amount', x: ocAmountX, w: ocColAmount, align: 'right' },
+  ];
   y=ensureSpace(headerH+Math.max(1,otherRows.length)*baseRowH+baseRowH);y=drawTableHeader(y,otherColDefs);
   if(!otherRows.length){const rowH=baseRowH;doc.setFillColor(255,255,255);doc.rect(m,y,tw,rowH,'F');doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(m,y,tw,rowH,'S');doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(80,80,80);pdfText(doc,'No additional costs',m+8,y+14);y+=rowH;}
   else{
-  otherRows.forEach((row,idx)=>{
-    const unitShort=getUnitShortLabel(row.qtyUnit);
-    const qtyText =
-      row.qtyUnit==='m' || row.qtyUnit==='sqft'
-        ? `${Number(row.qty).toFixed(2)} ${unitShort}`
-        : `${Math.round(row.qty)} ${unitShort}`;
+    otherRows.forEach((row,idx)=>{
+      const unitShort=getUnitShortLabel(row.qtyUnit);
+      const qtyText =
+        row.qtyUnit==='m' || row.qtyUnit==='sqft'
+          ? `${Number(row.qty).toFixed(2)} ${unitShort}`
+          : `${Math.round(row.qty)} ${unitShort}`;
 
-    const rowH=drawDataRow(
-      y,
-      idx,
-      [
-        row.label,
-        qtyText,
-        `Rs.${numberWithCommas(row.rate)}/${unitShort}`,
-        `Rs.${numberWithCommas(Math.round(row.amount))}`
-      ],
-      otherColDefs
+      const rowH=drawDataRow(
+        y,
+        idx,
+        [
+          row.label,
+          qtyText,
+          `Rs.${numberWithCommas(row.rate)}/${unitShort}`,
+          ...(hasMiscDiscount
+            ? [row.isMiscellaneous && toNum(row.discountPercent) > 0 ? `${toNum(row.discountPercent)}%` : '']
+            : []),
+          `Rs.${numberWithCommas(Math.round(
+            row.isMiscellaneous
+              ? toNum(row.grossAmount)
+              : toNum(row.amount)
+          ))}`,
+        ],
+        otherColDefs
+      );
+
+      y+=rowH;
+    });
+  }
+  {
+    const rowH = baseRowH;
+    doc.setFillColor(...pdfColor('#FFF7ED'));
+    doc.rect(m, y, tw, rowH, 'F');
+    doc.setDrawColor(...pdfColor(BRAND.grid));
+    doc.rect(m, y, tw, rowH, 'S');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(30, 30, 30);
+    pdfText(doc, hasFabricCosts ? 'Other Costs Total' : 'Costs Total', m + 8, y + 14);
+    rightText(`Rs.${numberWithCommas(grossOtherCostsTotal)}`, m + tw - 8, y + 14);
+    y += rowH;
+  }
+  if (miscDiscountTotal > 0) {
+    const rowH = baseRowH;
+    doc.setFillColor(255, 240, 240);
+    doc.rect(m, y, tw, rowH, 'F');
+    doc.setDrawColor(...pdfColor(BRAND.grid));
+    doc.rect(m, y, tw, rowH, 'S');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(180, 30, 30);
+    pdfText(doc, 'Miscellaneous Discounts', m + 8, y + 14);
+    rightText(`-Rs.${numberWithCommas(miscDiscountTotal)}`, m + tw - 8, y + 14);
+    y += rowH;
+  }
+  if (miscDiscountTotal > 0) {
+    const rowH = baseRowH;
+    doc.setFillColor(...pdfColor('#E8F5E9'));
+    doc.rect(m, y, tw, rowH, 'F');
+    doc.setDrawColor(...pdfColor(BRAND.grid));
+    doc.rect(m, y, tw, rowH, 'S');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(20, 100, 40);
+    pdfText(
+      doc,
+      hasFabricCosts ? 'Net Other Costs Total (after discount)' : 'Net Costs Total (after discount)',
+      m + 8,
+      y + 15
     );
-
-    y+=rowH;
-  });
-}
-  {const rowH=baseRowH;doc.setFillColor(...pdfColor('#FFF7ED'));doc.rect(m,y,tw,rowH,'F');doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(m,y,tw,rowH,'S');doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(30,30,30);pdfText(doc,'Other Costs Total',m+8,y+14);rightText(`Rs.${numberWithCommas(otherCostsTotal)}`,m+tw-8,y+14);y+=rowH;}
+    rightText(`Rs.${numberWithCommas(netOtherCostsTotal)}`, m + tw - 8, y + 15);
+    y += rowH;
+  }
   return y+6;
 }
 
 /* drawFinalSummaryPanel  — accepts gstBreakdown for per-category lines */
 function drawFinalSummaryPanel(doc, m, y, meta, summary, sigDataURL) {
   const pw=doc.internal.pageSize.getWidth(),ph=doc.internal.pageSize.getHeight(),qrDataUrl=meta.company?.paymentQrUrl;
+  const grossOtherTotal = Math.round(
+    toNum(summary.otherTotal || 0) + toNum(summary.miscDiscountTotal || 0)
+  );
+  const hasFabricCosts = toNum(summary.netFabricTotal ?? summary.clothTotal) > 0;
+  const costsLabel = hasFabricCosts ? 'Other Costs' : 'Costs';
   const sectionW=pw-2*m,gap=16,halfW=(sectionW-gap)/2,leftX=m,rightX=m+halfW+gap,qrSize=132;
 
   // Build summary lines
-  const lines = [
-    { label: summary.discountAmount > 0 ? (summary.discountMode === 'linewise' ? 'Net Fabric (linewise discounts)' : 'Net Fabric (after discount)') : 'Fabric Total', value: `Rs.${numberWithCommas(summary.netFabricTotal ?? summary.clothTotal)}`, bold: false, grandTotal: false },
-    { label: 'Other Costs', value: `Rs.${numberWithCommas(summary.otherTotal)}`, bold: false, grandTotal: false },
-  ];
+  const lines = [];
+
+  if (hasFabricCosts) {
+    lines.push({
+      label: summary.discountAmount > 0
+        ? (summary.discountMode === 'linewise'
+          ? 'Net Fabric (linewise discounts)'
+          : 'Net Fabric (after discount)')
+        : 'Fabric Total',
+      value: `Rs.${numberWithCommas(summary.netFabricTotal ?? summary.clothTotal)}`,
+      bold: false,
+      grandTotal: false,
+    });
+  }
+
+  lines.push({
+    label: toNum(summary.miscDiscountTotal) > 0
+      ? `${costsLabel} (after discount)`
+      : costsLabel,
+    value: `Rs.${numberWithCommas(summary.otherTotal)}`,
+    bold: false,
+    grandTotal: false,
+  });
 
   // ── NEW: per-category GST lines ──
   const gstBreakdown = summary.gstBreakdown || [];
@@ -358,7 +492,7 @@ function drawFinalSummaryPanel(doc, m, y, meta, summary, sigDataURL) {
   if(qrDataUrl){try{const qrBoxX=leftX+(halfW-qrSize)/2,qrBoxY=y+28;doc.roundedRect(qrBoxX,qrBoxY,qrSize,qrSize,6,6,'S');doc.addImage(qrDataUrl,'PNG',qrBoxX+4,qrBoxY+4,qrSize-8,qrSize-8);}catch(e){}}
   doc.setDrawColor(...pdfColor(BRAND.grid));doc.roundedRect(rightX,y,halfW,blockH,6,6,'S');
   const totalsStartY=y+8;
-  lines.forEach((it,i)=>{const ry=totalsStartY+i*rowH;if(it.grandTotal){doc.setFillColor(...pdfColor(BRAND.primary));doc.rect(rightX,ry,halfW,rowH+4,'F');doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(255,255,255);pdfText(doc,it.label,rightX+8,ry+15);pdfText(doc,it.value,rightX+halfW-8,ry+15,{align:'right'});}else{if(it.isGst){doc.setFillColor(240,253,244);}else if(i%2===0){doc.setFillColor(255,255,255);}else{doc.setFillColor(250,250,250);}doc.rect(rightX,ry,halfW,rowH,'F');doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(rightX,ry,halfW,rowH,'S');doc.setFont('helvetica',it.bold?'bold':'normal');doc.setFontSize(it.isGst?8.5:10);doc.setTextColor(it.isGst?5:50,it.isGst?100:50,it.isGst?60:50);pdfText(doc,it.label,rightX+8,ry+15);doc.setTextColor(30,30,30);pdfText(doc,it.value,rightX+halfW-8,ry+15,{align:'right'});}});
+  lines.forEach((it,i)=>{const ry=totalsStartY+i*rowH;if(it.grandTotal){doc.setFillColor(...pdfColor(BRAND.primary));doc.rect(rightX,ry,halfW,rowH+4,'F');doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(255,255,255);pdfText(doc,it.label,rightX+8,ry+15);pdfText(doc,it.value,rightX+halfW-8,ry+15,{align:'right'});}else{if(it.isGst){doc.setFillColor(240,253,244);}else if(i%2===0){doc.setFillColor(255,255,255);}else{doc.setFillColor(250,250,250);}doc.rect(rightX,ry,halfW,rowH,'F');doc.setDrawColor(...pdfColor(BRAND.grid));doc.rect(rightX,ry,halfW,rowH,'S');doc.setFont('helvetica',it.bold?'bold':'normal');doc.setFontSize(it.isGst?8.5:10);doc.setTextColor(it.isDiscount?180:(it.isGst?5:50),it.isDiscount?30:(it.isGst?100:50),it.isDiscount?30:(it.isGst?60:50));pdfText(doc,it.label,rightX+8,ry+15);doc.setTextColor(30,30,30);pdfText(doc,it.value,rightX+halfW-8,ry+15,{align:'right'});}});
   const sigTopY=y+blockH-signatureH+2;
   if(sigDataURL){try{doc.addImage(sigDataURL,'PNG',rightX+4,sigTopY,120,32);}catch(e){}}
   doc.setDrawColor(...pdfColor(BRAND.primary));doc.setLineWidth(0.8);doc.line(rightX+4,sigTopY+34,rightX+halfW-4,sigTopY+34);
@@ -396,6 +530,14 @@ export async function generateFullPDF(rooms, meta, settings, miscellaneousCosts 
   y = drawGstBlock(doc, m, y, meta);
   y = drawSectionHeader(doc, m, y, meta.quoteNo ? `QUOTATION - ${meta.quoteNo}` : 'QUOTATION');
   const all = computeAllTotals(rooms, meta.commercials, settings, miscellaneousCosts);
+  const miscDiscountTotal = Math.round(
+    (miscellaneousCosts || []).reduce((sum, item) => {
+      const grossAmount = toNum(item.rate) * (toNum(item.quantity) || 1);
+      const discountPercent = Math.min(100, Math.max(0, toNum(item?.discountPercent)));
+      return sum + grossAmount * (discountPercent / 100);
+    }, 0)
+  );
+  all.summary.miscDiscountTotal = miscDiscountTotal;
   y = drawGroupedSummarySection(doc, m, y, rooms, settings, meta.commercials, miscellaneousCosts, mergeFabricsRoomWise);
   y = drawPaymentTermsBlock(doc, m, y);
   drawFinalSummaryPanel(doc, m, y, meta, all.summary, sigDataURL);
@@ -480,6 +622,11 @@ export async function generateCombinedPDF(quotes, settings) {
     netFabricTotal: combinedNetFabricTotal, clothTotal: combinedNetFabricTotal, otherTotal: combinedOtherTotal,
     base: combinedBaseTotal, discountAmount: 0, afterDiscount: combinedNetFabricTotal + combinedOtherTotal,
     gstAmount: combinedGstTotal, roundOff: combinedRoundOffTotal, finalTotal: combinedGrandTotal, gstBreakdown: [],
+    miscDiscountTotal: quoteSnapshots.reduce((sum, qs) => sum + (qs.misc || []).reduce((s, item) => {
+      const grossAmount = toNum(item.rate) * (toNum(item.quantity) || 1);
+      const discountPercent = Math.min(100, Math.max(0, toNum(item?.discountPercent)));
+      return s + grossAmount * (discountPercent / 100);
+    }, 0), 0),
   }, sigDataURL);
   return doc;
 }
@@ -668,9 +815,43 @@ export async function generatePerformaInvoice(rooms, meta, settings, miscellaneo
     serviceRows.push({ desc: 'Installation', qty: tq, unit: 'pcs', rate: settings.installationRatePerTrackFt || 0, amount: installTotal });
   }
   (miscellaneousCosts || []).forEach(item => {
-    const name = String(item.name || '').trim(); const rate = toNum(item.rate); const qty = toNum(item.quantity) || 1;
-    if (name && Math.round(rate * qty) > 0) serviceRows.push({ desc: name, qty, unit: item.unit || 'nos', rate, amount: rate * qty });
+    const name = String(item.name || '').trim();
+    const rate = toNum(item.rate);
+    const qty = toNum(item.quantity) || 1;
+    const grossAmount = rate * qty;
+    const discountPercent = Math.min(
+      100,
+      Math.max(0, toNum(item?.discountPercent))
+    );
+    const discountAmount = grossAmount * (discountPercent / 100);
+    const amount = Math.max(0, grossAmount - discountAmount);
+
+    if (name && Math.round(amount) > 0) {
+      serviceRows.push({
+        desc: discountPercent > 0
+          ? `${name} (Disc. ${discountPercent}%)`
+          : name,
+        qty,
+        unit: item.unit || 'nos',
+        rate,
+        grossAmount,
+        discountPercent,
+        discountAmount,
+        amount,
+        isMiscellaneous: true,
+      });
+    }
   });
+  const miscDiscountTotal = Math.round(
+    serviceRows.reduce(
+      (sum, row) =>
+        sum +
+        (row.isMiscellaneous
+          ? toNum(row.discountAmount)
+          : 0),
+      0
+    )
+  );
 
   serviceRows.forEach(row => {
     const isAlt = rowIdx % 2 !== 0;
@@ -773,6 +954,13 @@ try {
     tLines.push({ label: `Discount (${meta.commercials.discountType === 'percent' ? meta.commercials.discountValue + '%' : 'Fixed'})`, value: `-Rs.${numberWithCommas(summary.discountAmount)}`, red: true });
   }
   tLines.push({ label: 'Taxable Amount', value: `Rs.${numberWithCommas(summary.afterDiscount)}`, bold: true });
+  if (miscDiscountTotal > 0) {
+    tLines.push({
+      label: 'Discount',
+      value: `-Rs.${numberWithCommas(miscDiscountTotal)}`,
+      red: true,
+    });
+  }
 
   /* per-category GST lines */
   const gstBreakdown = summary.gstBreakdown || [];

@@ -80,7 +80,10 @@ export default function QuoteEditor({
               {miscellaneousCosts.length === 0 ? <div className="empty-box">No miscellaneous costs added.</div> : (
                 <div className="misc-costs-list">
                   {miscellaneousCosts.map((item) => {
-                    const amount = toNum(item.rate) * (toNum(item.quantity) || 1);
+                    const grossAmount = toNum(item.rate) * (toNum(item.quantity) || 1);
+const discountPercent = Math.min(100, Math.max(0, toNum(item.discountPercent)));
+const discountAmount = grossAmount * (discountPercent / 100);
+const amount = grossAmount - discountAmount;
                     return (
                       <div key={item.id} className="misc-cost-row">
   <Field label="Cost Name">
@@ -124,6 +127,20 @@ export default function QuoteEditor({
     />
   </Field>
 
+  <Field label="Discount %">
+  <UnitInput
+    unit="%"
+    value={item.discountPercent || ""}
+    onChange={e =>
+      handleMiscCostChange(item.id, {
+        discountPercent: e.target.value,
+      })
+    }
+    inputMode="decimal"
+    placeholder="0"
+  />
+</Field>
+
   {quoteMeta.commercials.applyGst && (
     <Field label="GST Category">
       <select
@@ -151,9 +168,29 @@ export default function QuoteEditor({
 
   <Field label="Amount">
     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-      <div style={{ minWidth: 90, fontWeight: 800, color: 'var(--primary)' }}>
-        {currency(amount)}
-      </div>
+      <div style={{ minWidth: 120 }}>
+  {discountAmount > 0 && (
+    <div
+      style={{
+        fontSize: 11,
+        color: '#6b7280',
+        textDecoration: 'line-through',
+      }}
+    >
+      {currency(grossAmount)}
+    </div>
+  )}
+
+  <div style={{ fontWeight: 800, color: 'var(--primary)' }}>
+    {currency(amount)}
+  </div>
+
+  {discountAmount > 0 && (
+    <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 2 }}>
+      -{currency(discountAmount)} ({discountPercent}%)
+    </div>
+  )}
+</div>
       <button
         className="btn btn-danger btn-sm"
         onClick={() => handleDeleteMiscCost(item.id)}

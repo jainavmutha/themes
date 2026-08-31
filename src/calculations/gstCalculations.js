@@ -197,11 +197,26 @@ function computeGstBreakdown(
 
   (miscellaneousCosts || []).forEach(
     (item) => {
-      const miscBase =
+      const grossMiscBase =
         toNum(item.rate) *
         (toNum(
           item.quantity
         ) || 1);
+
+      const discountPercent = Math.min(
+        100,
+        Math.max(
+          0,
+          toNum(item?.discountPercent)
+        )
+      );
+
+      const miscBase = Math.max(
+        0,
+        grossMiscBase -
+          grossMiscBase *
+            (discountPercent / 100)
+      );
 
       addToCategory(
         serviceCategory,

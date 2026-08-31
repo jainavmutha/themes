@@ -222,9 +222,7 @@ const {
     grandTotal={grandTotal}
     handleSaveQuote={handleSaveQuote}
   />
-)}
-
-        
+)} 
 
         {/* ORDER PROCESSING TAB */}
         {activeTab === 'order-processing' && (

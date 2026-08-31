@@ -86,13 +86,25 @@ export function computeAllTotals(
 
   const miscTotal = (
     miscellaneousCosts || []
-  ).reduce(
-    (sum, item) =>
-      sum +
+  ).reduce((sum, item) => {
+    const grossAmount =
       toNum(item.rate) *
-        (toNum(item.quantity) || 1),
-    0
-  );
+      (toNum(item.quantity) || 1);
+
+    const discountPercent = Math.min(
+      100,
+      Math.max(0, toNum(item?.discountPercent))
+    );
+
+    const discountAmount =
+      grossAmount *
+      (discountPercent / 100);
+
+    return sum + Math.max(
+      0,
+      grossAmount - discountAmount
+    );
+  }, 0);
 
   const discountMode =
     commercials?.discountMode === "linewise"
