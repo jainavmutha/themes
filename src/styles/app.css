@@ -2833,3 +2833,860 @@ color: #FFFFFF !important;
     width: 100%;
   }
 }
+/* =========================================================
+   DARK THEME OVERRIDES – POLISHED CHARCOAL / PLUM UI
+   ========================================================= */
+:root {
+  --primary: #D33A8B;
+  --primary-dark: #F4F1F3;
+  --accent: #29A7A3;
+  --bg: #171719;
+  --border: #343438;
+  --text: #F3F1F2;
+  --muted: #A8A3A7;
+  --shadow: rgba(0, 0, 0, 0.38);
+  --cream: #211B1F;
+  --surface: #1B1B1E;
+  --surface-soft: #222225;
+  --surface-muted: #28282C;
+  --line: #343438;
+  --line-soft: #2B2B2F;
+  --text-soft: #B9B3B7;
+  --shadow-soft: 0 14px 34px rgba(0, 0, 0, 0.28);
+  --shadow-card: 0 10px 28px rgba(0, 0, 0, 0.24);
+}
+
+html,
+body,
+#root {
+  background: #111113;
+  color: var(--text);
+}
+
+body {
+  background: #111113;
+  color: var(--text);
+}
+
+.app-container {
+  background:
+    radial-gradient(circle at top left, rgba(211, 58, 139, 0.13), transparent 32%),
+    radial-gradient(circle at top right, rgba(41, 167, 163, 0.08), transparent 28%),
+    linear-gradient(180deg, #141416 0%, #101012 100%);
+}
+
+.app-inner {
+  color: var(--text);
+}
+
+.box,
+.hero-box,
+.tabs-box,
+.room-box,
+.commercial-card,
+.grand-total-box,
+.save-bottom-bar,
+.dash-kpi,
+.dash-chart-card,
+.fp-kpi,
+.fp-progress-card,
+.pricelist-search-card,
+.pricelist-selection-card,
+.pricelist-browser-card,
+.pricelist-upload-card,
+.pricelist-preview-card,
+.pricelist-warning-card,
+.pricelist-price-manager,
+.pricelist-design-editor,
+.pricelist-import-section,
+.pricelist-db-manager,
+.pricelist-db-manager-card,
+.pricelist-db-designs-card,
+.auth-card {
+  background: #1B1B1E;
+  border-color: #343438;
+  box-shadow: var(--shadow-card);
+}
+
+.hero-box {
+  background: rgba(27, 27, 30, 0.9);
+  border-color: #3A363B;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.34);
+}
+
+.hero-logo {
+  background: #242428;
+  border-color: #3B3B40;
+}
+
+.hero-title,
+.box-header h3,
+.room-title-input,
+.summary-name,
+.commercial-title,
+.final-label,
+.op-not-approved-title,
+.auth-title,
+.pricelists-panel > .panel-header h2,
+.pricelist-selection-card .panel-header h3,
+.pricelist-price-manager-head strong,
+.pricelist-design-editor-head strong,
+.pricelist-db-manager > summary,
+.pricelist-db-manager-body > .panel-header.compact h3,
+.pricelist-db-manager-card-head strong,
+.pricelist-db-manager-actions strong,
+.pricelist-selection-summary strong,
+.pricelist-summary-grid .stat-card strong,
+.pricelist-update-preview strong {
+  color: #F5F2F4;
+}
+
+.hero-subtitle,
+.field-hint,
+.commercial-note,
+.op-fin-sub,
+.op-item-room,
+.auth-subtitle,
+.pricelists-panel > .panel-header p,
+.pricelist-selection-card .panel-header p,
+.pricelist-result-meta,
+.pricelist-selection-summary,
+.pricelist-limit-note,
+.pricelist-db-manager-body > .panel-header.compact .muted,
+.pricelist-db-manager-card > .muted,
+.pricelist-db-manager-actions .muted,
+.pricelist-delete-confirmation .muted,
+.muted {
+  color: #A8A3A7;
+}
+
+.box-header {
+  background: linear-gradient(90deg, #1D1D20 0%, #241B21 100%);
+  border-bottom-color: #303035;
+}
+
+.box-header h3::before,
+.room-box::before {
+  background: linear-gradient(180deg, #D33A8B, #29A7A3);
+}
+
+.tabs-box {
+  background: rgba(24, 24, 27, 0.92);
+  border-color: #343438;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.26);
+}
+
+.tab {
+  color: #A9A4A8;
+}
+
+.tab:hover {
+  background: #252529;
+  color: #F0ECEF;
+}
+
+.tab-active {
+  background: linear-gradient(135deg, #D33A8B 0%, #9E1E64 100%);
+  color: #FFFFFF;
+  box-shadow: 0 8px 20px rgba(211, 58, 139, 0.28);
+}
+
+.field-label,
+.pricelists-panel .field label,
+.pricelist-db-manager-card .field label,
+.pricelist-price-manager-action .field label {
+  color: #BDB7BB;
+}
+
+.input,
+.select,
+.input-xs,
+.select-xs,
+.unit-input__field,
+.history-search,
+.op-advance-input,
+.pricelists-panel input[type="text"],
+.pricelists-panel input[type="number"],
+.pricelists-panel input[type="file"],
+.pricelists-panel select,
+.pricelist-price-manager-action input,
+.pricelist-db-manager-card select,
+.pricelist-db-manager-card input[type="text"],
+.pricelist-db-manager-card input[type="number"],
+.pricelist-db-designs-card .data-table input,
+.pricelist-price-input {
+  background: #242428 !important;
+  color: #F3F0F2 !important;
+  border-color: #3C3C42 !important;
+}
+
+.input::placeholder,
+.history-search::placeholder,
+.pricelists-panel input::placeholder,
+.pricelist-db-manager-card input::placeholder,
+.pricelist-db-designs-card input::placeholder {
+  color: #77727A;
+}
+
+.input:hover,
+.select:hover,
+.unit-input__field:hover,
+.history-search:hover,
+.pricelists-panel input:hover,
+.pricelists-panel select:hover {
+  border-color: #55515A !important;
+}
+
+.input:focus,
+.select:focus,
+.unit-input__field:focus,
+.history-search:focus,
+.pricelists-panel input:focus,
+.pricelists-panel select:focus,
+.pricelist-db-manager-card input:focus,
+.pricelist-db-manager-card select:focus,
+.pricelist-db-designs-card .data-table input:focus,
+.pricelist-price-input:focus {
+  border-color: #D33A8B !important;
+  box-shadow: 0 0 0 4px rgba(211, 58, 139, 0.12) !important;
+}
+
+.unit-input__suffix,
+.fabric-label-badge,
+.op-item-badge {
+  background: rgba(211, 58, 139, 0.14);
+  color: #F172B4;
+  border-color: rgba(211, 58, 139, 0.25);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #D33A8B 0%, #A52067 100%);
+  border-color: #D33A8B;
+  color: #FFFFFF;
+  box-shadow: 0 8px 20px rgba(211, 58, 139, 0.18);
+}
+
+.btn-primary:hover {
+  filter: brightness(1.08);
+}
+
+.btn-outline,
+.btn-secondary {
+  background: #222225 !important;
+  color: #E7E2E5 !important;
+  border-color: #424248 !important;
+}
+
+.btn-outline:hover,
+.btn-secondary:hover:not(:disabled) {
+  background: #2B2429 !important;
+  color: #F172B4 !important;
+  border-color: rgba(211, 58, 139, 0.5) !important;
+}
+
+.btn-danger,
+.btn-remove-fabric {
+  background: rgba(185, 52, 66, 0.08);
+  color: #FF8A96;
+  border-color: rgba(255, 120, 135, 0.3);
+}
+
+.btn-danger:hover,
+.btn-remove-fabric:hover {
+  background: #C74455;
+  color: #FFFFFF;
+  border-color: #C74455;
+}
+
+.btn-icon {
+  background: #29292E;
+  border-color: #3D3D43;
+  color: #F172B4;
+}
+
+.btn-icon:hover {
+  background: #D33A8B;
+  color: #FFFFFF;
+}
+
+.room-box {
+  background: linear-gradient(135deg, #1B1B1E 0%, #1D191C 100%);
+}
+
+.room-box:nth-of-type(4n + 1),
+.room-box:nth-of-type(4n + 2),
+.room-box:nth-of-type(4n + 3),
+.room-box:nth-of-type(4n + 4) {
+  background: linear-gradient(135deg, #1B1B1E 0%, #201B1F 100%);
+}
+
+.room-header,
+.room-footer,
+.room-dims-grid,
+.stat-grid {
+  background: #1D1D20;
+  border-color: #303035;
+}
+
+.fabrics-section {
+  background: rgba(31, 31, 34, 0.92);
+  border-color: #343438;
+}
+
+.fabrics-section-title {
+  color: #E8E3E6;
+}
+
+.fabric-row {
+  background: #202024;
+  border-color: #37373C;
+}
+
+.fabric-row-header,
+.fabric-row:nth-child(odd) .fabric-row-header,
+.fabric-row:nth-child(even) .fabric-row-header {
+  background: linear-gradient(90deg, #2A2026 0%, #222225 100%);
+  border-bottom-color: #343438;
+}
+
+.fabric-row-grid .field,
+.room-dims-grid .field,
+.op-item-grid .field,
+.fabric-row-grid .field:nth-child(4n + 1),
+.fabric-row-grid .field:nth-child(4n + 2),
+.fabric-row-grid .field:nth-child(4n + 3),
+.fabric-row-grid .field:nth-child(4n + 4),
+.room-dims-grid .field:nth-child(4n + 1),
+.room-dims-grid .field:nth-child(4n + 2),
+.room-dims-grid .field:nth-child(4n + 3),
+.room-dims-grid .field:nth-child(4n + 4) {
+  background: #242428;
+  border-color: #35353A;
+}
+
+.fabric-cost-pill,
+.summary-total,
+.total-amount,
+.final-amount,
+.dash-kpi-value,
+.history-row-no {
+  color: #F172B4;
+}
+
+.fabric-cost-pill,
+.op-item-cost {
+  background: rgba(211, 58, 139, 0.12);
+  border-color: rgba(211, 58, 139, 0.22);
+}
+
+.stat,
+.summary-item,
+.commercial-card,
+.grand-total-box {
+  background: #222225;
+  border-color: #343438;
+}
+
+.summary-list .summary-item:nth-child(odd),
+.summary-list .summary-item:nth-child(even),
+.commercial-card:nth-child(4n + 1),
+.commercial-card:nth-child(4n + 2),
+.commercial-card:nth-child(4n + 3),
+.commercial-card:nth-child(4n + 4) {
+  background: #222225;
+}
+
+.pill {
+  background: #2B292D;
+  border-color: #3A373D;
+  color: #D8D2D6;
+}
+
+.gst-breakdown-row,
+.pricelist-update-preview,
+.pricelist-design-mode-note {
+  background: rgba(41, 167, 163, 0.08);
+  border-color: rgba(41, 167, 163, 0.22);
+}
+
+.gst-breakdown-label,
+.gst-breakdown-value {
+  color: #63C7C3;
+}
+
+.save-bottom-bar {
+  background: rgba(24, 24, 27, 0.92);
+  border-color: #3B343A;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.4);
+}
+
+.history-table th,
+.order-report-table th,
+.op-summary-table th,
+.fp-checklist-table th,
+.pricelists-panel .data-table th,
+.pricelist-design-editor .data-table thead th,
+.pricelist-browser-card .data-table thead th,
+.pricelist-db-designs-card .data-table th {
+  background: #242126;
+  color: #C9C2C6;
+  border-color: #353238;
+}
+
+.history-table td,
+.order-report-table td,
+.op-summary-table td,
+.fp-checklist-table td,
+.pricelists-panel .data-table td,
+.pricelist-db-designs-card .data-table td {
+  background: #1D1D20;
+  color: #ECE8EA;
+  border-color: #303035;
+}
+
+.history-table tr:hover td,
+.order-report-table tr:hover td,
+.op-summary-table tr:hover td,
+.fp-checklist-table tr:hover td,
+.pricelists-panel .data-table tbody tr:hover td,
+.pricelist-browser-card .data-table tbody tr:hover,
+.pricelist-design-editor .data-table tbody tr:hover {
+  background: #272329 !important;
+}
+
+.history-row-date,
+.stat-label,
+.dash-kpi-label,
+.fp-kpi-label {
+  color: #9D969C;
+}
+
+.history-row-total {
+  color: #EDE9EB;
+}
+
+.loaded-banner,
+.op-banner,
+.process-order-cta {
+  background: rgba(41, 167, 163, 0.10);
+  border-color: rgba(41, 167, 163, 0.32);
+}
+
+.op-banner-title,
+.process-order-cta-title {
+  color: #84D4D0;
+}
+
+.op-banner-sub,
+.process-order-cta-sub {
+  color: #64BDB9;
+}
+
+.op-fin-card.quote {
+  background: rgba(211, 58, 139, 0.10);
+  border-color: rgba(211, 58, 139, 0.24);
+}
+
+.op-fin-card.advance,
+.op-fin-card.balance.settled {
+  background: rgba(39, 174, 96, 0.08);
+  border-color: rgba(72, 201, 128, 0.22);
+}
+
+.op-fin-card.balance {
+  background: rgba(230, 152, 44, 0.08);
+  border-color: rgba(230, 152, 44, 0.22);
+}
+
+.op-item-card {
+  background: #202024;
+  border-color: #35353A;
+}
+
+.op-item-header {
+  background: linear-gradient(90deg, #2A2026 0%, #222225 100%);
+  border-bottom-color: #343438;
+}
+
+.auth-page {
+  background:
+    radial-gradient(circle at top left, rgba(211, 58, 139, 0.14), transparent 34%),
+    linear-gradient(135deg, #121214 0%, #171719 52%, #1E171C 100%);
+}
+
+.user-pill,
+.hero-actions .user-pill {
+  background: #222225 !important;
+  border-color: #38383D !important;
+  color: #EAE6E8 !important;
+}
+
+.user-role,
+.hero-actions .user-role {
+  color: #F172B4 !important;
+}
+
+.hero-actions > button:nth-of-type(1) {
+  background: #222225 !important;
+  color: #D2CCD0 !important;
+  border-color: #3A3A40 !important;
+}
+
+.hero-actions > button:nth-of-type(1):hover {
+  background: #2B2B30 !important;
+  color: #FFFFFF !important;
+  border-color: #56565E !important;
+}
+
+.hero-actions > button:nth-of-type(2) {
+  background: rgba(211, 58, 139, 0.10) !important;
+  color: #F172B4 !important;
+  border-color: rgba(211, 58, 139, 0.28) !important;
+}
+
+.hero-actions > button:nth-of-type(2):hover {
+  background: rgba(211, 58, 139, 0.18) !important;
+}
+
+.hero-actions > button:nth-of-type(3) {
+  background: linear-gradient(135deg, #D33A8B 0%, #A52067 100%) !important;
+  border-color: #D33A8B !important;
+}
+
+.hero-actions > button:nth-of-type(4) {
+  background: rgba(41, 167, 163, 0.10) !important;
+  color: #65D0CC !important;
+  border-color: rgba(41, 167, 163, 0.28) !important;
+}
+
+.hero-actions > button:nth-of-type(4):hover {
+  background: rgba(41, 167, 163, 0.17) !important;
+}
+
+.hero-actions > button:nth-of-type(5) {
+  background: linear-gradient(135deg, #3A3A3F 0%, #222225 100%) !important;
+  border-color: #47474E !important;
+}
+
+.pricelist-search-card,
+.pricelist-selection-card,
+.pricelist-browser-card,
+.pricelist-upload-card,
+.pricelist-preview-card,
+.pricelist-warning-card,
+.pricelist-price-manager,
+.pricelist-design-editor,
+.pricelist-import-section,
+.pricelist-db-manager,
+.pricelist-db-manager-card,
+.pricelist-db-designs-card {
+  background: #1B1B1E !important;
+  border-color: #343438 !important;
+}
+
+.pricelist-selection-card > .panel-header.compact,
+.pricelist-design-editor-head,
+.pricelist-db-manager-body > .panel-header.compact,
+.pricelist-db-designs-card .pricelist-design-editor-head,
+.pricelist-import-section > summary,
+.pricelist-db-manager > summary {
+  background: #1E1E21;
+  border-color: #303035;
+}
+
+.pricelist-workflow-step {
+  background: rgba(41, 167, 163, 0.06);
+  border-color: rgba(41, 167, 163, 0.2);
+}
+
+.pricelist-step-number {
+  background: linear-gradient(135deg, #D33A8B, #A52067);
+  box-shadow: 0 5px 14px rgba(211, 58, 139, 0.26);
+}
+
+.pricelist-selection-toolbar .btn-secondary,
+.pricelist-price-manager-count,
+.pricelist-db-manager > summary::before {
+  background: #2B262A !important;
+  color: #F172B4 !important;
+  border-color: #3B3439 !important;
+}
+
+.pricelist-catalogue-option {
+  background: #212124;
+  border-color: #35353A;
+}
+
+.pricelist-catalogue-option:hover {
+  border-color: rgba(211, 58, 139, 0.36);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+}
+
+.pricelist-catalogue-option.selected {
+  background: rgba(211, 58, 139, 0.10);
+  border-color: rgba(211, 58, 139, 0.48);
+}
+
+.pricelist-catalogue-option strong,
+.pricelist-workflow-heading strong,
+.pricelist-price-manager-head > div:first-child > strong,
+.pricelist-db-manager-card-head strong {
+  color: #F1EDEF;
+}
+
+.pricelist-catalogue-option small,
+.pricelist-summary-grid .stat-card span,
+.pricelist-db-manager-card .field label {
+  color: #9C959A;
+}
+
+.pricelist-segmented-control {
+  background: #232327;
+  border-color: #38383D;
+}
+
+.pricelist-segmented-control button {
+  color: #AAA4A8;
+}
+
+.pricelist-segmented-control button:hover {
+  color: #F172B4;
+}
+
+.pricelist-segmented-control button.active {
+  background: linear-gradient(135deg, #D33A8B, #A52067);
+  color: #FFFFFF;
+}
+
+.pricelist-selection-summary,
+.pricelist-summary-grid .stat-card,
+.pricelist-manual-save-bar,
+.pricelist-db-manager-actions {
+  background: #222225;
+  border-color: #343438;
+}
+
+.pricelist-db-manager-card:nth-child(2) {
+  background: linear-gradient(180deg, #1B1B1E 0%, #182221 100%);
+  border-color: rgba(41, 167, 163, 0.20);
+}
+
+.pricelist-delete-confirmation {
+  background: rgba(180, 54, 70, 0.10);
+  border-color: rgba(255, 120, 135, 0.28);
+}
+
+.pricelist-delete-confirmation strong {
+  color: #FF9AA4;
+}
+
+.pricelist-delete-confirmation .muted {
+  color: #D0A4AA;
+}
+
+.misc-cost-row,
+.misc-costs-list > .grid-3 {
+  background: linear-gradient(135deg, #1E1E21 0%, #251C22 100%) !important;
+  border-color: #38343A !important;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2) !important;
+}
+
+.misc-cost-row:nth-child(even),
+.misc-costs-list > .grid-3:nth-child(even) {
+  background: linear-gradient(135deg, #1E1E21 0%, #182423 100%) !important;
+}
+
+.misc-total-row,
+.misc-total-box {
+  background: #222225;
+  border-color: rgba(211, 58, 139, 0.20);
+}
+
+.status-draft {
+  background: #2B2B30 !important;
+  color: #D0CCD0 !important;
+  border-color: #424249 !important;
+}
+
+.status-sent {
+  background: rgba(59, 130, 246, 0.12) !important;
+  color: #8AB6FF !important;
+  border-color: rgba(96, 165, 250, 0.28) !important;
+}
+
+.status-approved {
+  background: rgba(16, 185, 129, 0.12) !important;
+  color: #78DDB8 !important;
+  border-color: rgba(52, 211, 153, 0.26) !important;
+}
+
+.status-rejected {
+  background: rgba(239, 68, 68, 0.12) !important;
+  color: #FF9A9A !important;
+  border-color: rgba(248, 113, 113, 0.26) !important;
+}
+
+.status-cancelled {
+  background: rgba(245, 158, 11, 0.12) !important;
+  color: #F7C36B !important;
+  border-color: rgba(251, 191, 36, 0.26) !important;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #171719;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3C3A3F;
+  border-radius: 999px;
+  border: 2px solid #171719;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555158;
+}
+
+::selection {
+  background: rgba(211, 58, 139, 0.35);
+  color: #FFFFFF;
+}
+/* =========================================================
+   DARK THEME FIX – REMOVE LEFTOVER WHITE SURFACES
+   ========================================================= */
+.box-body,
+.room-dims-grid,
+.room-header,
+.room-footer,
+.stat-grid,
+.empty-box,
+.pricelists-panel .table-wrap,
+.pricelists-panel .data-table,
+.pricelist-import-section,
+.pricelist-db-designs-card,
+.pricelist-db-designs-card .data-table td,
+.pricelist-design-editor,
+.pricelist-browser-card,
+.pricelist-catalogue-option,
+.op-item-notes .input {
+  background: #1B1B1E !important;
+  color: #F3F1F2 !important;
+}
+
+.box-body {
+  border-top: 0 !important;
+}
+
+.room-dims-grid {
+  border-top-color: #303035 !important;
+}
+
+.room-header,
+.room-footer {
+  border-color: #303035 !important;
+}
+
+.empty-box {
+  border-color: #3A3A40 !important;
+  color: #9F999E !important;
+}
+
+.pricelists-panel .table-wrap,
+.pricelists-panel .data-table {
+  border-color: #303035 !important;
+}
+
+/* Customer details and generic content sections should never flash white */
+.box > .box-body,
+.box .box-body,
+.box-body > div,
+.box-body > section {
+  color: #F3F1F2;
+}
+
+/* Keep direct field/container surfaces dark */
+.box-body .field,
+.room-dims-grid .field,
+.op-item-grid .field,
+.fabric-row-grid .field {
+  background: #222225 !important;
+  border-color: #343438 !important;
+}
+
+/* Quotation number / status row polish */
+.current-quote-badge {
+  background: rgba(211, 58, 139, 0.10) !important;
+  color: #F172B4 !important;
+  border-color: rgba(211, 58, 139, 0.30) !important;
+}
+
+/* Remove bright white page gaps inside major cards */
+.box,
+.room-box,
+.fabrics-section,
+.fabric-row,
+.summary-item,
+.commercial-card,
+.grand-total-box {
+  background-clip: padding-box;
+}
+
+/* Ensure tables and rows stay dark throughout */
+.history-table,
+.order-report-table,
+.op-summary-table,
+.fp-checklist-table {
+  background: #1B1B1E !important;
+}
+
+.history-table td,
+.order-report-table td,
+.op-summary-table td,
+.fp-checklist-table td {
+  background: #1D1D20 !important;
+}
+
+/* Preserve subtle hierarchy instead of flat black */
+.box-body {
+  background: linear-gradient(180deg, #1B1B1E 0%, #19191C 100%) !important;
+}
+
+.room-dims-grid {
+  background: #1D1D20 !important;
+}
+
+.fabrics-section {
+  background: #1A1A1D !important;
+}
+
+.fabric-row {
+  background: #202024 !important;
+}
+
+/* Make room content blend into dark parent instead of leaving light seams */
+.room-box {
+  background: #1B1B1E !important;
+}
+
+.room-header {
+  background: #1D1D20 !important;
+}
+
+.room-footer {
+  background: #1D1D20 !important;
+}
+
+/* Inputs remain clearly separated from dark content area */
+.box-body .input,
+.box-body .select,
+.room-dims-grid .input,
+.room-dims-grid .select,
+.room-dims-grid .unit-input__field {
+  background: #242428 !important;
+  color: #F5F2F4 !important;
+  border-color: #3C3C42 !important;
+}
