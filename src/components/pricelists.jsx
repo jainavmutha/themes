@@ -196,6 +196,35 @@ export default function Pricelists() {
     return items;
   }, [items, searchResults, searchTerm]);
 
+  const browserItems = useMemo(() => {
+    const term = searchTerm.trim();
+
+    // When a search is active, show only actual search results.
+    // Never fall back to selected catalogue rows, otherwise a failed search
+    // can misleadingly show unrelated data.
+    if (term) {
+      return searchResults;
+    }
+
+    if (selectedCatalogueItems.length > 0) {
+      return selectedCatalogueItems;
+    }
+
+    if (selectedCatalogueId) {
+      return items.filter(
+        (item) => String(item.catalogue_id) === String(selectedCatalogueId)
+      );
+    }
+
+    return items;
+  }, [
+    searchTerm,
+    searchResults,
+    selectedCatalogueItems,
+    selectedCatalogueId,
+    items,
+  ]);
+
   useEffect(() => {
     const term = searchTerm.trim();
 
@@ -210,6 +239,32 @@ export default function Pricelists() {
     const timer = window.setTimeout(async () => {
       try {
         setIsSearching(true);
+        setError("");
+
+        const normalizeSearchText = (value) =>
+          String(value ?? "")
+            .normalize("NFKD")
+            .toLowerCase()
+            .replace(/&/g, " and ")
+            .replace(/[^a-z0-9]+/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+
+        const normalizedTerm = normalizeSearchText(term);
+        const searchTokens = normalizedTerm
+          .split(" ")
+          .filter((token) => token.length >= 2 && token !== "and");
+
+        const textMatches = (value) => {
+          const normalizedValue = normalizeSearchText(value);
+          if (!normalizedValue || !normalizedTerm) return false;
+          if (normalizedValue.includes(normalizedTerm)) return true;
+
+          return (
+            searchTokens.length > 0 &&
+            searchTokens.every((token) => normalizedValue.includes(token))
+          );
+        };
 
         const [allBrands, allCatalogues, directItemMatches] = await Promise.all([
           getPricelistBrands(),
@@ -219,47 +274,46 @@ export default function Pricelists() {
 
         if (cancelled) return;
 
-        const lowerTerm = term.toLowerCase();
         const brandMap = new Map(
           allBrands.map((brand) => [String(brand.id), brand])
         );
-
-        const matchingBrandIds = new Set(
-          allBrands
-            .filter((brand) =>
-              String(brand.name || "")
-                .toLowerCase()
-                .includes(lowerTerm)
-            )
-            .map((brand) => String(brand.id))
-        );
-
-        const matchingCatalogues = allCatalogues.filter((catalogue) => {
-          const catalogueMatches = String(catalogue.name || "")
-            .toLowerCase()
-            .includes(lowerTerm);
-          const brandMatches = matchingBrandIds.has(String(catalogue.brand_id));
-          return catalogueMatches || brandMatches;
-        });
-
-        const catalogueItemGroups = await Promise.all(
-          matchingCatalogues.map((catalogue) => getPricelistItems(catalogue.id))
-        );
-
-        if (cancelled) return;
-
         const catalogueMap = new Map(
           allCatalogues.map((catalogue) => [String(catalogue.id), catalogue])
         );
 
-        const combined = [
-          ...(directItemMatches || []),
-          ...catalogueItemGroups.flat(),
-        ];
+        const matchingBrandIds = new Set(
+          allBrands
+            .filter((brand) => textMatches(brand.name))
+            .map((brand) => String(brand.id))
+        );
 
-        const unique = Array.from(
-          new Map(combined.map((item) => [String(item.id), item])).values()
-        ).map((item) => {
+        const matchingCatalogues = allCatalogues.filter((catalogue) => {
+          const brand = brandMap.get(String(catalogue.brand_id));
+          return (
+            textMatches(catalogue.name) ||
+            matchingBrandIds.has(String(catalogue.brand_id)) ||
+            textMatches(brand?.name)
+          );
+        });
+
+        // If the search matches a catalogue name such as "Silk & Satin",
+        // load every design in that catalogue, not just rows whose own text matches.
+        const matchedCatalogueGroups = await Promise.all(
+          matchingCatalogues.map(async (catalogue) => {
+            const rows = await getPricelistItems(catalogue.id);
+            const brand = brandMap.get(String(catalogue.brand_id));
+
+            return (rows || []).map((item) => ({
+              ...item,
+              _catalogueName: catalogue.name || "",
+              _brandName: brand?.name || "",
+            }));
+          })
+        );
+
+        if (cancelled) return;
+
+        const normalizedDirectMatches = (directItemMatches || []).map((item) => {
           const catalogue = catalogueMap.get(String(item.catalogue_id));
           const brand = catalogue
             ? brandMap.get(String(catalogue.brand_id))
@@ -271,6 +325,15 @@ export default function Pricelists() {
             _brandName: brand?.name || "",
           };
         });
+
+        const combined = [
+          ...matchedCatalogueGroups.flat(),
+          ...normalizedDirectMatches,
+        ];
+
+        const unique = Array.from(
+          new Map(combined.map((item) => [String(item.id), item])).values()
+        );
 
         setSearchResults(unique);
       } catch (err) {
@@ -496,30 +559,89 @@ export default function Pricelists() {
       setError("");
       setSuccess("");
 
-      const allCatalogues = await getPricelistCatalogues();
+      // Use the exact catalogue selection visible in the UI as the source of truth.
+      // This prevents a selected catalogue from disappearing during a second lookup.
       const selectedSet = new Set(selectedCatalogueIds.map(String));
-      const pdfCatalogues = allCatalogues.filter((catalogue) =>
+
+      let pdfCatalogues = catalogues.filter((catalogue) =>
         selectedSet.has(String(catalogue.id))
       );
 
-      const itemGroups = await Promise.all(
-        pdfCatalogues.map((catalogue) => getPricelistItems(catalogue.id))
-      );
-      const pdfItems = itemGroups.flat();
-
-      if (pdfCatalogues.length === 0) {
-        throw new Error("The selected catalogues could not be found in the database.");
+      // Fallback to a fresh catalogue load only if the current UI list does not
+      // contain every selected id (for example after changing filters quickly).
+      if (pdfCatalogues.length !== selectedSet.size) {
+        const allCatalogues = await getPricelistCatalogues();
+        pdfCatalogues = allCatalogues.filter((catalogue) =>
+          selectedSet.has(String(catalogue.id))
+        );
       }
+
+      if (pdfCatalogues.length !== selectedSet.size) {
+        const foundIds = new Set(pdfCatalogues.map((catalogue) => String(catalogue.id)));
+        const missingIds = selectedCatalogueIds.filter(
+          (id) => !foundIds.has(String(id))
+        );
+        throw new Error(
+          `Could not resolve ${missingIds.length} selected catalogue${
+            missingIds.length === 1 ? "" : "s"
+          } for the PDF.`
+        );
+      }
+
+      // Fetch every selected catalogue independently at generation time.
+      // We also compare with selectedCatalogueItems, which is what the design
+      // editor below is displaying, so anything visible there cannot be silently lost.
+      const loadedByCatalogue = new Map();
+      selectedCatalogueItems.forEach((item) => {
+        const key = String(item.catalogue_id);
+        if (!loadedByCatalogue.has(key)) loadedByCatalogue.set(key, []);
+        loadedByCatalogue.get(key).push(item);
+      });
+
+      const catalogueResults = await Promise.all(
+        pdfCatalogues.map(async (catalogue) => {
+          let rows = loadedByCatalogue.get(String(catalogue.id)) || [];
+
+          if (rows.length === 0) {
+            const freshRows = await getPricelistItems(catalogue.id);
+            rows = Array.isArray(freshRows) ? freshRows : [];
+          }
+
+          return {
+            catalogue,
+            rows,
+          };
+        })
+      );
+
+      const emptyCatalogues = [];
+      const pdfItems = [];
+
+      catalogueResults.forEach(({ catalogue, rows }) => {
+        if (!rows.length) {
+          emptyCatalogues.push(catalogue.name || String(catalogue.id));
+          return;
+        }
+
+        rows.forEach((item) => {
+          pdfItems.push({
+            ...item,
+            catalogue_id: catalogue.id,
+          });
+        });
+      });
 
       if (pdfItems.length === 0) {
         throw new Error("The selected catalogues do not contain any price rows.");
       }
 
+      const allBrands = brands.length ? brands : await getPricelistBrands();
+
       const generatedPdf = generatePricelistPdf({
-        brands,
+        brands: allBrands,
         catalogues: pdfCatalogues,
         items: pdfItems,
-        selectedCatalogueIds,
+        selectedCatalogueIds: pdfCatalogues.map((catalogue) => String(catalogue.id)),
         markupPercent,
         filename: `Themes-Pricelist-${Number(markupPercent || 0)}pct.pdf`,
       });
@@ -540,10 +662,18 @@ export default function Pricelists() {
         URL.revokeObjectURL(pdfUrl);
       }, 1000);
 
+      const generatedCount = pdfCatalogues.length - emptyCatalogues.length;
+      const emptyNote =
+        emptyCatalogues.length > 0
+          ? ` ${emptyCatalogues.length} catalogue${
+              emptyCatalogues.length === 1 ? "" : "s"
+            } had no rows and were skipped: ${emptyCatalogues.join(", ")}.`
+          : "";
+
       setSuccess(
-        `Pricelist PDF generated for ${pdfCatalogues.length} catalogue${
+        `Pricelist PDF generated for ${generatedCount} of ${pdfCatalogues.length} selected catalogue${
           pdfCatalogues.length === 1 ? "" : "s"
-        }.`
+        }.${emptyNote}`
       );
     } catch (err) {
       console.error("Failed to generate pricelist PDF", err);
@@ -1017,7 +1147,7 @@ export default function Pricelists() {
             <>Searching entire pricelist database...</>
           ) : (
             <>
-              <strong>{formatNumber(filteredItems.length)}</strong> price rows · {selectedBrandName} · {selectedCatalogueName}
+              <strong>{formatNumber(searchTerm.trim() ? searchResults.length : filteredItems.length)}</strong> price rows · {selectedBrandName} · {selectedCatalogueName}
             </>
           )}
         </div>
@@ -1330,7 +1460,7 @@ export default function Pricelists() {
         </div>
       </div>
 
-      {searchTerm.trim() && (
+      {(searchTerm.trim() || selectedCatalogueIds.length > 0 || selectedCatalogueId) && (
         <div className="pricelist-browser-card">
         <div className="table-wrap">
           <table className="data-table">
@@ -1351,12 +1481,18 @@ export default function Pricelists() {
                 <tr>
                   <td colSpan="8">Loading pricelists...</td>
                 </tr>
-              ) : filteredItems.length === 0 ? (
+              ) : browserItems.length === 0 ? (
                 <tr>
-                  <td colSpan="8">No matching prices found.</td>
+                  <td colSpan="8">
+                    {searchTerm.trim()
+                      ? `No matches found for "${searchTerm.trim()}".`
+                      : selectedCatalogueIds.length > 0
+                        ? "No price rows found for the selected catalogue(s)."
+                        : "No matching prices found."}
+                  </td>
                 </tr>
               ) : (
-                filteredItems.slice(0, 500).map((item) => {
+                browserItems.slice(0, 500).map((item) => {
                   const catalogue = catalogueById.get(String(item.catalogue_id));
                   const brand = catalogue
                     ? brandById.get(String(catalogue.brand_id))
@@ -1433,7 +1569,7 @@ export default function Pricelists() {
           </div>
         )}
 
-        {filteredItems.length > 500 && (
+        {browserItems.length > 500 && (
           <div className="muted pricelist-limit-note">
             Showing the first 500 rows. Use search or filters to narrow the results.
           </div>

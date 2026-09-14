@@ -6,46 +6,73 @@ import {
   SUPABASE_PRICELIST_ITEMS_TABLE,
 } from "./supabase";
 
+const SUPABASE_PAGE_SIZE = 1000;
+
+const fetchAllRows = async (path) => {
+  const rows = [];
+  let offset = 0;
+
+  while (true) {
+    const separator = path.includes("?") ? "&" : "?";
+
+    const page =
+      (await supabaseFetch(
+        `${path}${separator}limit=${SUPABASE_PAGE_SIZE}&offset=${offset}`
+      )) || [];
+
+    if (!Array.isArray(page)) {
+      return rows;
+    }
+
+    rows.push(...page);
+
+    if (page.length < SUPABASE_PAGE_SIZE) {
+      break;
+    }
+
+    offset += SUPABASE_PAGE_SIZE;
+  }
+
+  return rows;
+};
+
 export async function getPricelistBrands() {
-  return (
-    (await supabaseFetch(
-      `/rest/v1/${SUPABASE_PRICELIST_BRANDS_TABLE}?select=id,name,created_at&order=name.asc`
-    )) || []
+  return fetchAllRows(
+    `/rest/v1/${SUPABASE_PRICELIST_BRANDS_TABLE}?select=id,name,created_at&order=name.asc`
   );
 }
 
 export async function getPricelistCatalogues(brandId = null) {
-  const brandFilter = brandId ? `&brand_id=eq.${brandId}` : "";
+  const brandFilter = brandId
+    ? `&brand_id=eq.${encodeURIComponent(brandId)}`
+    : "";
 
-  return (
-    (await supabaseFetch(
-      `/rest/v1/${SUPABASE_PRICELIST_CATALOGUES_TABLE}?select=id,brand_id,name,created_at&order=name.asc${brandFilter}`
-    )) || []
+  return fetchAllRows(
+    `/rest/v1/${SUPABASE_PRICELIST_CATALOGUES_TABLE}?select=id,brand_id,name,created_at&order=name.asc${brandFilter}`
   );
 }
 
 export async function getPricelistItems(catalogueId = null) {
   const catalogueFilter = catalogueId
-    ? `&catalogue_id=eq.${catalogueId}`
+    ? `&catalogue_id=eq.${encodeURIComponent(catalogueId)}`
     : "";
 
-  return (
-    (await supabaseFetch(
-      `/rest/v1/${SUPABASE_PRICELIST_ITEMS_TABLE}?select=id,catalogue_id,design_code,description,width,hsn,gst_percent,rrp,created_at&order=design_code.asc${catalogueFilter}`
-    )) || []
+  return fetchAllRows(
+    `/rest/v1/${SUPABASE_PRICELIST_ITEMS_TABLE}?select=id,catalogue_id,design_code,description,width,hsn,gst_percent,rrp,created_at&order=design_code.asc${catalogueFilter}`
   );
 }
 
 export async function searchPricelistItems(searchTerm) {
   const term = String(searchTerm || "").trim();
-  if (!term) return [];
+
+  if (!term) {
+    return [];
+  }
 
   const pattern = encodeURIComponent(`*${term}*`);
 
-  return (
-    (await supabaseFetch(
-      `/rest/v1/${SUPABASE_PRICELIST_ITEMS_TABLE}?select=id,catalogue_id,design_code,description,width,hsn,gst_percent,rrp&or=(design_code.ilike.${pattern},description.ilike.${pattern})&order=design_code.asc&limit=100`
-    )) || []
+  return fetchAllRows(
+    `/rest/v1/${SUPABASE_PRICELIST_ITEMS_TABLE}?select=id,catalogue_id,design_code,description,width,hsn,gst_percent,rrp&or=(design_code.ilike.${pattern},description.ilike.${pattern},width.ilike.${pattern},hsn.ilike.${pattern})&order=design_code.asc`
   );
 }
 
