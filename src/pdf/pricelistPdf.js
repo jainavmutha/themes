@@ -77,26 +77,48 @@ const estimateTableHeight = (group, rowHeight, titleHeight, headerHeight) =>
 const drawTable = ({
   doc,
   group,
-  x,
-  y,
-  width,
+  startColumn,
+  columnY,
+  columns,
+  tableWidth,
+  gap,
   markupPercent,
-  pageBottom,
   rowHeight,
   titleHeight,
   headerHeight,
   fontSize,
+  pageHeight,
 }) => {
-  const [designWidth, widthWidth, rrpWidth] = getColumnWidths(width);
-  const columnXs = [
-    x,
-    x + designWidth,
-    x + designWidth + widthWidth,
-  ];
+  let currentColumn = startColumn;
+  let currentPageBottom = pageHeight - PAGE_MARGIN;
+  let cursorY = columnY[currentColumn];
 
-  const drawTitle = (titleY) => {
+  const getX = (columnIndex) =>
+    PAGE_MARGIN + columnIndex * (tableWidth + gap);
+
+  const getColumnMetrics = (columnIndex) => {
+    const x = getX(columnIndex);
+    const [designWidth, widthWidth, rrpWidth] = getColumnWidths(tableWidth);
+    const columnXs = [
+      x,
+      x + designWidth,
+      x + designWidth + widthWidth,
+    ];
+
+    return {
+      x,
+      designWidth,
+      widthWidth,
+      rrpWidth,
+      columnXs,
+    };
+  };
+
+  const drawTitle = (columnIndex, titleY) => {
+    const { x } = getColumnMetrics(columnIndex);
+
     doc.setFillColor(...COLORS.primary);
-    doc.roundedRect(x, titleY, width, titleHeight, 4, 4, "F");
+    doc.roundedRect(x, titleY, tableWidth, titleHeight, 4, 4, "F");
 
     doc.setTextColor(...COLORS.white);
     doc.setFont("helvetica", "bold");
@@ -105,17 +127,25 @@ const drawTable = ({
       `${group.brandName} — ${group.catalogueName}`,
       x + 7,
       titleY + titleHeight * 0.67,
-      { maxWidth: width - 14 }
+      { maxWidth: tableWidth - 14 }
     );
   };
 
-  const drawHeader = (headerY) => {
+  const drawHeader = (columnIndex, headerY) => {
+    const {
+      x,
+      designWidth,
+      widthWidth,
+      rrpWidth,
+      columnXs,
+    } = getColumnMetrics(columnIndex);
+
     doc.setFillColor(...COLORS.secondary);
-    doc.rect(x, headerY, width, headerHeight, "F");
+    doc.rect(x, headerY, tableWidth, headerHeight, "F");
 
     doc.setDrawColor(...COLORS.line);
     doc.setLineWidth(0.45);
-    doc.rect(x, headerY, width, headerHeight);
+    doc.rect(x, headerY, tableWidth, headerHeight);
 
     const headers = ["Design / Code", "Width", "RRP"];
     const widths = [designWidth, widthWidth, rrpWidth];
@@ -135,13 +165,21 @@ const drawTable = ({
     doc.line(columnXs[2], headerY, columnXs[2], headerY + headerHeight);
   };
 
-  const drawRow = (item, rowY) => {
+  const drawRow = (columnIndex, item, rowY) => {
+    const {
+      x,
+      designWidth,
+      widthWidth,
+      rrpWidth,
+      columnXs,
+    } = getColumnMetrics(columnIndex);
+
     doc.setFillColor(...COLORS.white);
-    doc.rect(x, rowY, width, rowHeight, "F");
+    doc.rect(x, rowY, tableWidth, rowHeight, "F");
 
     doc.setDrawColor(...COLORS.line);
     doc.setLineWidth(0.35);
-    doc.rect(x, rowY, width, rowHeight);
+    doc.rect(x, rowY, tableWidth, rowHeight);
     doc.line(columnXs[1], rowY, columnXs[1], rowY + rowHeight);
     doc.line(columnXs[2], rowY, columnXs[2], rowY + rowHeight);
 
@@ -168,34 +206,47 @@ const drawTable = ({
     });
   };
 
-  let cursorY = y;
-  let currentPageBottom = pageBottom;
+  const startSection = () => {
+    drawTitle(currentColumn, cursorY);
+    cursorY += titleHeight;
+    drawHeader(currentColumn, cursorY);
+    cursorY += headerHeight;
+  };
 
-  drawTitle(cursorY);
-  cursorY += titleHeight;
-  drawHeader(cursorY);
-  cursorY += headerHeight;
+  const moveToNextColumnOrPage = () => {
+    columnY[currentColumn] = Math.max(columnY[currentColumn], cursorY + gap);
 
-  group.items.forEach((item, index) => {
-    if (cursorY + rowHeight > currentPageBottom) {
+    if (currentColumn < columns - 1) {
+      currentColumn += 1;
+      cursorY = columnY[currentColumn];
+    } else {
       doc.addPage("a4", "landscape");
-      cursorY = PAGE_MARGIN;
+      columnY.fill(PAGE_MARGIN);
+      currentColumn = 0;
       currentPageBottom = doc.internal.pageSize.getHeight() - PAGE_MARGIN;
-      drawTitle(cursorY);
-      cursorY += titleHeight;
-      drawHeader(cursorY);
-      cursorY += headerHeight;
+      cursorY = PAGE_MARGIN;
     }
 
-    drawRow(item, cursorY);
+    startSection();
+  };
+
+  startSection();
+
+  group.items.forEach((item) => {
+    if (cursorY + rowHeight > currentPageBottom) {
+      moveToNextColumnOrPage();
+    }
+
+    drawRow(currentColumn, item, cursorY);
     cursorY += rowHeight;
-
-    if (index === group.items.length - 1) {
-      cursorY += 2;
-    }
   });
 
-  return cursorY;
+  columnY[currentColumn] = Math.max(columnY[currentColumn], cursorY + gap);
+
+  return {
+    endColumn: currentColumn,
+    endY: cursorY,
+  };
 };
 
 export function generatePricelistPdf({
@@ -279,24 +330,21 @@ export function generatePricelistPdf({
       }
     }
 
-    const x = PAGE_MARGIN + bestColumn * (tableWidth + gap);
-    const y = columnY[bestColumn];
-
-    const finalY = drawTable({
+    drawTable({
       doc,
       group,
-      x,
-      y,
-      width: tableWidth,
+      startColumn: bestColumn,
+      columnY,
+      columns,
+      tableWidth,
+      gap,
       markupPercent,
-      pageBottom,
       rowHeight,
       titleHeight,
       headerHeight,
       fontSize,
+      pageHeight,
     });
-
-    columnY[bestColumn] = finalY + gap;
   });
 
   const pageCount = doc.getNumberOfPages();
