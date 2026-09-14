@@ -25,6 +25,7 @@ import OrderProcessingTab from "./components/OrderProcessing.jsx";
 import FabricProcessingTab from "./components/FabricProcessing.jsx";
 import PaymentsTab from "./components/Payments.jsx";
 import DashboardTab from "./components/Dashboard.jsx";
+import Pricelists from "./components/pricelists.jsx";
 import CompanyTab from "./components/Company.jsx";
 import SettingsTab from "./components/Settings.jsx";
 import SavedQuotes from "./components/SavedQuotes.jsx";
@@ -280,6 +281,11 @@ const {
         {/* DASHBOARD TAB */}
         {activeTab === 'dashboard' && (
           <DashboardTab allQuotes={allQuotes} />
+        )}
+
+        {/* PRICELISTS TAB */}
+        {activeTab === "pricelists" && (
+          <Pricelists />
         )}
 
         {/* COMPANY TAB */}

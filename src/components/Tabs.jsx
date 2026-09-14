@@ -20,6 +20,7 @@ export default function Tabs({
     ["payments", "Payments"],
     ["history", "Saved Quotes"],
     ["dashboard", "Dashboard"],
+    ["pricelists", "Pricelists"],
     ["company", "Company"],
     ["settings", "Settings"],
   ];

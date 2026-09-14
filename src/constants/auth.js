@@ -18,6 +18,7 @@ export const AUTH_USERS = [
 export const STAFF_ALLOWED_TABS = new Set([
   "quote",
   "payments",
+  "pricelists",
   "settings",
   "fabric-processing",
 ]);

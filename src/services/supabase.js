@@ -13,6 +13,15 @@ export const SUPABASE_SETTINGS_TABLE =
 export const SUPABASE_APP_STATE_TABLE =
   "app_state";
 
+export const SUPABASE_PRICELIST_BRANDS_TABLE =
+  "pricelist_brands";
+
+export const SUPABASE_PRICELIST_CATALOGUES_TABLE =
+  "pricelist_catalogues";
+
+export const SUPABASE_PRICELIST_ITEMS_TABLE =
+  "pricelist_items";
+
 export function hasSupabaseConfig() {
   return Boolean(
     SUPABASE_URL &&
