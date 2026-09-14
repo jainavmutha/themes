@@ -64,12 +64,11 @@ const groupPricelistData = ({
 };
 
 const getColumnWidths = (tableWidth) => {
-  const designWidth = tableWidth * 0.42;
-  const widthWidth = tableWidth * 0.14;
-  const rrpWidth = tableWidth * 0.21;
-  const priceWidth = tableWidth * 0.23;
+  const designWidth = tableWidth * 0.58;
+  const widthWidth = tableWidth * 0.16;
+  const rrpWidth = tableWidth * 0.26;
 
-  return [designWidth, widthWidth, rrpWidth, priceWidth];
+  return [designWidth, widthWidth, rrpWidth];
 };
 
 const estimateTableHeight = (group, rowHeight, titleHeight, headerHeight) =>
@@ -88,12 +87,11 @@ const drawTable = ({
   headerHeight,
   fontSize,
 }) => {
-  const [designWidth, widthWidth, rrpWidth, priceWidth] = getColumnWidths(width);
+  const [designWidth, widthWidth, rrpWidth] = getColumnWidths(width);
   const columnXs = [
     x,
     x + designWidth,
     x + designWidth + widthWidth,
-    x + designWidth + widthWidth + rrpWidth,
   ];
 
   const drawTitle = (titleY) => {
@@ -119,8 +117,8 @@ const drawTable = ({
     doc.setLineWidth(0.45);
     doc.rect(x, headerY, width, headerHeight);
 
-    const headers = ["Design / Code", "Width", "RRP", "Adjusted"];
-    const widths = [designWidth, widthWidth, rrpWidth, priceWidth];
+    const headers = ["Design / Code", "Width", "RRP"];
+    const widths = [designWidth, widthWidth, rrpWidth];
 
     doc.setTextColor(...COLORS.dark);
     doc.setFont("helvetica", "bold");
@@ -135,7 +133,6 @@ const drawTable = ({
     doc.setDrawColor(...COLORS.line);
     doc.line(columnXs[1], headerY, columnXs[1], headerY + headerHeight);
     doc.line(columnXs[2], headerY, columnXs[2], headerY + headerHeight);
-    doc.line(columnXs[3], headerY, columnXs[3], headerY + headerHeight);
   };
 
   const drawRow = (item, rowY) => {
@@ -147,7 +144,6 @@ const drawTable = ({
     doc.rect(x, rowY, width, rowHeight);
     doc.line(columnXs[1], rowY, columnXs[1], rowY + rowHeight);
     doc.line(columnXs[2], rowY, columnXs[2], rowY + rowHeight);
-    doc.line(columnXs[3], rowY, columnXs[3], rowY + rowHeight);
 
     doc.setTextColor(...COLORS.dark);
     doc.setFont("helvetica", "normal");
@@ -155,8 +151,7 @@ const drawTable = ({
 
     const designText = safeText(item.design_code || item.description || "—");
     const widthText = safeText(item.width || "—");
-    const rrpText = formatPrice(item.rrp);
-    const adjustedText = formatPrice(adjustedPrice(item.rrp, markupPercent));
+    const rrpText = formatPrice(adjustedPrice(item.rrp, markupPercent));
 
     doc.text(designText, columnXs[0] + 5, rowY + rowHeight * 0.66, {
       maxWidth: designWidth - 10,
@@ -164,22 +159,13 @@ const drawTable = ({
     doc.text(widthText, columnXs[1] + 5, rowY + rowHeight * 0.66, {
       maxWidth: widthWidth - 10,
     });
+
+    doc.setTextColor(...COLORS.primary);
+    doc.setFont("helvetica", "bold");
     doc.text(rrpText, columnXs[2] + rrpWidth - 5, rowY + rowHeight * 0.66, {
       align: "right",
       maxWidth: rrpWidth - 10,
     });
-
-    doc.setTextColor(...COLORS.primary);
-    doc.setFont("helvetica", "bold");
-    doc.text(
-      adjustedText,
-      columnXs[3] + priceWidth - 5,
-      rowY + rowHeight * 0.66,
-      {
-        align: "right",
-        maxWidth: priceWidth - 10,
-      }
-    );
   };
 
   let cursorY = y;

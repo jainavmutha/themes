@@ -7,6 +7,12 @@ import {
   searchPricelistItems,
   updatePricelistItems,
   setPricelistPrice,
+  createPricelistBrand,
+  createPricelistCatalogue,
+  createPricelistItems,
+  deletePricelistBrand,
+  deletePricelistCatalogue,
+  deletePricelistItem,
   importParsedPricelist,
   parsePricelistExcel,
 } from "../services/pricelistService";
@@ -45,6 +51,18 @@ export default function Pricelists() {
   const [isSavingPrices, setIsSavingPrices] = useState(false);
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
+
+  const [dbBrandMode, setDbBrandMode] = useState("existing");
+  const [dbBrandId, setDbBrandId] = useState("");
+  const [dbNewBrandName, setDbNewBrandName] = useState("");
+  const [dbCatalogueMode, setDbCatalogueMode] = useState("existing");
+  const [dbCatalogueId, setDbCatalogueId] = useState("");
+  const [dbNewCatalogueName, setDbNewCatalogueName] = useState("");
+  const [dbCatalogues, setDbCatalogues] = useState([]);
+  const [dbDesignRows, setDbDesignRows] = useState([
+    { design_code: "", width: "", hsn: "", gst_percent: "", rrp: "" },
+  ]);
+  const [isSavingDbEntry, setIsSavingDbEntry] = useState(false);
 
   const [file, setFile] = useState(null);
   const [parsed, setParsed] = useState(null);
@@ -85,6 +103,37 @@ export default function Pricelists() {
   useEffect(() => {
     refreshPricelistData();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDbCatalogues = async () => {
+      if (!dbBrandId || dbBrandMode !== "existing") {
+        setDbCatalogues([]);
+        setDbCatalogueId("");
+        return;
+      }
+
+      try {
+        const data = await getPricelistCatalogues(dbBrandId);
+        if (!cancelled) {
+          setDbCatalogues(data || []);
+          setDbCatalogueId("");
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to load database-manager catalogues", err);
+          setError(err?.message || "Could not load catalogues for this brand.");
+        }
+      }
+    };
+
+    loadDbCatalogues();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dbBrandId, dbBrandMode]);
 
   useEffect(() => {
     const updateCatalogues = async () => {
@@ -632,6 +681,223 @@ export default function Pricelists() {
     }
   };
 
+  const updateDbDesignRow = (index, field, value) => {
+    setDbDesignRows((current) =>
+      current.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, [field]: value } : row
+      )
+    );
+  };
+
+  const addDbDesignRow = () => {
+    setDbDesignRows((current) => [
+      ...current,
+      { design_code: "", width: "", hsn: "", gst_percent: "", rrp: "" },
+    ]);
+  };
+
+  const removeDbDesignRow = (index) => {
+    setDbDesignRows((current) =>
+      current.length === 1
+        ? current
+        : current.filter((_, rowIndex) => rowIndex !== index)
+    );
+  };
+
+  const resetDbEntryForm = () => {
+    setDbNewBrandName("");
+    setDbNewCatalogueName("");
+    setDbDesignRows([
+      { design_code: "", width: "", hsn: "", gst_percent: "", rrp: "" },
+    ]);
+  };
+
+  const handleSaveDbEntry = async () => {
+    try {
+      setIsSavingDbEntry(true);
+      setError("");
+      setSuccess("");
+
+      let brandId = dbBrandId;
+
+      if (dbBrandMode === "new") {
+        const brandName = dbNewBrandName.trim();
+        if (!brandName) throw new Error("Enter the new brand name.");
+
+        const createdBrand = await createPricelistBrand(brandName);
+        brandId = Array.isArray(createdBrand)
+          ? createdBrand[0]?.id
+          : createdBrand?.id;
+      }
+
+      if (!brandId) throw new Error("Select a brand or create a new brand.");
+
+      let catalogueId = dbCatalogueId;
+
+      if (dbCatalogueMode === "new") {
+        const catalogueName = dbNewCatalogueName.trim();
+        if (!catalogueName) throw new Error("Enter the new catalogue name.");
+
+        const createdCatalogue = await createPricelistCatalogue({
+          brandId,
+          name: catalogueName,
+        });
+        catalogueId = Array.isArray(createdCatalogue)
+          ? createdCatalogue[0]?.id
+          : createdCatalogue?.id;
+      }
+
+      if (!catalogueId) {
+        throw new Error("Select a catalogue or create a new catalogue.");
+      }
+
+      const validRows = dbDesignRows
+        .map((row) => ({
+          catalogue_id: catalogueId,
+          design_code: row.design_code.trim() || null,
+          description: null,
+          width: row.width.trim() || null,
+          hsn: row.hsn.trim() || null,
+          gst_percent: row.gst_percent === "" ? null : Number(row.gst_percent),
+          rrp: Number(row.rrp),
+        }))
+        .filter(
+          (row) =>
+            row.design_code && Number.isFinite(row.rrp) && row.rrp >= 0
+        );
+
+      if (validRows.length === 0) {
+        throw new Error("Add at least one design with a design/code and valid RRP.");
+      }
+
+      await createPricelistItems(validRows);
+
+      setSuccess(
+        `Added ${formatNumber(validRows.length)} design${
+          validRows.length === 1 ? "" : "s"
+        } to the pricelist database.`
+      );
+
+      resetDbEntryForm();
+      await refreshPricelistData();
+
+      if (dbBrandMode === "existing" && dbBrandId) {
+        const refreshedCatalogues = await getPricelistCatalogues(dbBrandId);
+        setDbCatalogues(refreshedCatalogues || []);
+      }
+    } catch (err) {
+      console.error("Failed to add pricelist database entry", err);
+      setError(err?.message || "Could not add the pricelist data.");
+    } finally {
+      setIsSavingDbEntry(false);
+    }
+  };
+
+  const handleDeleteBrand = async () => {
+    if (!dbBrandId) {
+      setError("Select a brand to delete.");
+      return;
+    }
+
+    const brand = brands.find((entry) => String(entry.id) === String(dbBrandId));
+    const brandName = brand?.name || "this brand";
+
+    if (!window.confirm(
+      `Delete ${brandName}? This will permanently delete the brand, all of its catalogues, and every design inside them.`
+    )) return;
+
+    try {
+      setError("");
+      setSuccess(`Deleting ${brandName}...`);
+      await deletePricelistBrand(dbBrandId);
+      setDbBrandId("");
+      setDbCatalogueId("");
+      setDbCatalogues([]);
+      setSelectedBrandId("");
+      setSelectedCatalogueId("");
+      setSelectedCatalogueIds([]);
+      setSelectedCatalogueItems([]);
+      await refreshPricelistData();
+      setSuccess(`Deleted ${brandName} and all related catalogues and designs.`);
+    } catch (err) {
+      console.error("Failed to delete pricelist brand", err);
+      setSuccess("");
+      setError(err?.message || "Could not delete the brand.");
+    }
+  };
+
+  const handleDeleteCatalogue = async () => {
+    if (!dbCatalogueId) {
+      setError("Select a catalogue to delete.");
+      return;
+    }
+
+    const catalogue = dbCatalogues.find(
+      (entry) => String(entry.id) === String(dbCatalogueId)
+    );
+    const catalogueName = catalogue?.name || "this catalogue";
+
+    if (!window.confirm(
+      `Delete ${catalogueName}? This will permanently delete the catalogue and every design inside it.`
+    )) return;
+
+    try {
+      setError("");
+      setSuccess(`Deleting ${catalogueName}...`);
+      await deletePricelistCatalogue(dbCatalogueId);
+      setDbCatalogueId("");
+      setSelectedCatalogueId("");
+      setSelectedCatalogueIds((current) =>
+        current.filter((id) => String(id) !== String(dbCatalogueId))
+      );
+      const refreshedCatalogues = dbBrandId
+        ? await getPricelistCatalogues(dbBrandId)
+        : [];
+      setDbCatalogues(refreshedCatalogues || []);
+      await refreshPricelistData();
+      setSuccess(`Deleted ${catalogueName} and all of its designs.`);
+    } catch (err) {
+      console.error("Failed to delete pricelist catalogue", err);
+      setSuccess("");
+      setError(err?.message || "Could not delete the catalogue.");
+    }
+  };
+
+  const handleDeleteDesign = async (item) => {
+    const designName = item?.design_code || item?.description || "this design";
+
+    if (!window.confirm(
+      `Delete design ${designName}? This will permanently remove only this design row.`
+    )) return;
+
+    try {
+      setError("");
+      setSuccess(`Deleting design ${designName}...`);
+      await deletePricelistItem(item.id);
+
+      if (selectedCatalogueId) {
+        await loadItems(selectedCatalogueId);
+      } else {
+        await loadItems();
+      }
+
+      if (selectedCatalogueIds.length > 0) {
+        const refreshedGroups = await Promise.all(
+          selectedCatalogueIds.map((catalogueId) =>
+            getPricelistItems(catalogueId)
+          )
+        );
+        setSelectedCatalogueItems(refreshedGroups.flat());
+      }
+
+      setSuccess(`Deleted design ${designName}.`);
+    } catch (err) {
+      console.error("Failed to delete pricelist design", err);
+      setSuccess("");
+      setError(err?.message || "Could not delete the design.");
+    }
+  };
+
   const sampleBrands = useMemo(
     () => parsed?.brands?.slice(0, 8) || [],
     [parsed]
@@ -1064,7 +1330,8 @@ export default function Pricelists() {
         </div>
       </div>
 
-      <div className="pricelist-browser-card">
+      {searchTerm.trim() && (
+        <div className="pricelist-browser-card">
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -1076,16 +1343,17 @@ export default function Pricelists() {
                 <th>HSN</th>
                 <th>GST</th>
                 <th>{selectedCatalogueId ? "Edit RRP" : "RRP"}</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {isLoadingData ? (
                 <tr>
-                  <td colSpan="7">Loading pricelists...</td>
+                  <td colSpan="8">Loading pricelists...</td>
                 </tr>
               ) : filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan="7">No matching prices found.</td>
+                  <td colSpan="8">No matching prices found.</td>
                 </tr>
               ) : (
                 filteredItems.slice(0, 500).map((item) => {
@@ -1125,6 +1393,19 @@ export default function Pricelists() {
                           <strong>{formatPrice(item.rrp)}</strong>
                         )}
                       </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn btn-danger pricelist-delete-design-button"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            handleDeleteDesign(item);
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </td>
                     </tr>
                   );
                 })
@@ -1157,7 +1438,372 @@ export default function Pricelists() {
             Showing the first 500 rows. Use search or filters to narrow the results.
           </div>
         )}
-      </div>
+        </div>
+      )}
+
+      <details className="pricelist-import-section pricelist-db-manager" open>
+        <summary>Manage Brands & Catalogues</summary>
+
+        <div className="pricelist-db-manager-body">
+          <div className="panel-header compact">
+            <div>
+              <h3>Manage Pricelist Structure</h3>
+              <p className="muted">
+                Select a brand or catalogue below to delete it from Supabase.
+              </p>
+            </div>
+          </div>
+
+          <div className="pricelist-db-manager-grid">
+            <div className="pricelist-db-manager-card">
+              <div className="pricelist-db-manager-card-head">
+                <span className="pricelist-step-number">1</span>
+                <strong>Brand</strong>
+              </div>
+
+              <div className="field">
+                <label>Select Brand</label>
+                <select
+                  value={dbBrandId}
+                  onChange={(event) => {
+                    setDbBrandMode("existing");
+                    setDbBrandId(event.target.value);
+                    setDbCatalogueMode("existing");
+                    setDbCatalogueId("");
+                  }}
+                >
+                  <option value="">Choose brand...</option>
+                  {brands.map((brand) => (
+                    <option key={`manage-brand-${brand.id}`} value={brand.id}>
+                      {brand.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                type="button"
+                className="btn btn-danger pricelist-delete-button"
+                onClick={handleDeleteBrand}
+                disabled={!dbBrandId}
+              >
+                Delete Brand
+              </button>
+
+              <div className="muted">
+                Deleting a brand also deletes every catalogue and design inside it.
+              </div>
+            </div>
+
+            <div className="pricelist-db-manager-card">
+              <div className="pricelist-db-manager-card-head">
+                <span className="pricelist-step-number">2</span>
+                <strong>Catalogue</strong>
+              </div>
+
+              <div className="field">
+                <label>Select Catalogue</label>
+                <select
+                  value={dbCatalogueId}
+                  onChange={(event) => {
+                    setDbCatalogueMode("existing");
+                    setDbCatalogueId(event.target.value);
+                  }}
+                  disabled={!dbBrandId}
+                >
+                  <option value="">Choose catalogue...</option>
+                  {dbCatalogues.map((catalogue) => (
+                    <option key={`manage-catalogue-${catalogue.id}`} value={catalogue.id}>
+                      {catalogue.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                type="button"
+                className="btn btn-danger pricelist-delete-button"
+                onClick={handleDeleteCatalogue}
+                disabled={!dbCatalogueId}
+              >
+                Delete Catalogue
+              </button>
+
+              <div className="muted">
+                Deleting a catalogue also deletes every design inside that catalogue.
+              </div>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <details className="pricelist-import-section pricelist-db-manager">
+        <summary>Add Brand, Catalogue or Designs</summary>
+
+        <div className="pricelist-db-manager-body">
+          <div className="panel-header compact">
+            <div>
+              <h3>Add to Pricelist Database</h3>
+              <p className="muted">
+                Create a new brand, add a catalogue to an existing brand, or add new designs to an existing catalogue.
+              </p>
+            </div>
+          </div>
+
+          <div className="pricelist-db-manager-grid">
+            <div className="pricelist-db-manager-card">
+              <div className="pricelist-db-manager-card-head">
+                <span className="pricelist-step-number">1</span>
+                <strong>Brand</strong>
+              </div>
+
+              <div className="pricelist-segmented-control">
+                <button
+                  type="button"
+                  className={dbBrandMode === "existing" ? "active" : ""}
+                  onClick={() => setDbBrandMode("existing")}
+                >
+                  Existing Brand
+                </button>
+                <button
+                  type="button"
+                  className={dbBrandMode === "new" ? "active" : ""}
+                  onClick={() => {
+                    setDbBrandMode("new");
+                    setDbBrandId("");
+                    setDbCatalogueMode("new");
+                    setDbCatalogueId("");
+                  }}
+                >
+                  New Brand
+                </button>
+              </div>
+
+              {dbBrandMode === "existing" ? (
+                <div className="field">
+                  <label>Select Brand</label>
+                  <select
+                    value={dbBrandId}
+                    onChange={(event) => setDbBrandId(event.target.value)}
+                  >
+                    <option value="">Choose brand...</option>
+                    {brands.map((brand) => (
+                      <option key={`db-brand-${brand.id}`} value={brand.id}>
+                        {brand.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="field">
+                  <label>New Brand Name</label>
+                  <input
+                    type="text"
+                    value={dbNewBrandName}
+                    onChange={(event) => setDbNewBrandName(event.target.value)}
+                    placeholder="e.g. D'Decor"
+                  />
+                </div>
+              )}
+              {dbBrandMode === "existing" && dbBrandId && (
+                <button
+                  type="button"
+                  className="btn btn-danger pricelist-delete-button"
+                  onClick={handleDeleteBrand}
+                >
+                  Delete Brand
+                </button>
+              )}
+            </div>
+
+            <div className="pricelist-db-manager-card">
+              <div className="pricelist-db-manager-card-head">
+                <span className="pricelist-step-number">2</span>
+                <strong>Catalogue</strong>
+              </div>
+
+              <div className="pricelist-segmented-control">
+                <button
+                  type="button"
+                  className={dbCatalogueMode === "existing" ? "active" : ""}
+                  onClick={() => setDbCatalogueMode("existing")}
+                  disabled={dbBrandMode === "new"}
+                >
+                  Existing Catalogue
+                </button>
+                <button
+                  type="button"
+                  className={dbCatalogueMode === "new" ? "active" : ""}
+                  onClick={() => {
+                    setDbCatalogueMode("new");
+                    setDbCatalogueId("");
+                  }}
+                >
+                  New Catalogue
+                </button>
+              </div>
+
+              {dbCatalogueMode === "existing" && dbBrandMode === "existing" ? (
+                <div className="field">
+                  <label>Select Catalogue</label>
+                  <select
+                    value={dbCatalogueId}
+                    onChange={(event) => setDbCatalogueId(event.target.value)}
+                    disabled={!dbBrandId}
+                  >
+                    <option value="">Choose catalogue...</option>
+                    {dbCatalogues.map((catalogue) => (
+                      <option key={`db-catalogue-${catalogue.id}`} value={catalogue.id}>
+                        {catalogue.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="field">
+                  <label>New Catalogue Name</label>
+                  <input
+                    type="text"
+                    value={dbNewCatalogueName}
+                    onChange={(event) => setDbNewCatalogueName(event.target.value)}
+                    placeholder="e.g. Amaara"
+                  />
+                </div>
+              )}
+              {dbCatalogueMode === "existing" && dbCatalogueId && (
+                <button
+                  type="button"
+                  className="btn btn-danger pricelist-delete-button"
+                  onClick={handleDeleteCatalogue}
+                >
+                  Delete Catalogue
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="pricelist-db-designs-card">
+            <div className="pricelist-design-editor-head">
+              <div>
+                <div className="pricelist-db-manager-card-head">
+                  <span className="pricelist-step-number">3</span>
+                  <strong>Add Designs</strong>
+                </div>
+                <div className="muted">
+                  Add one or more designs. Design/code and RRP are required; Width, HSN and GST are optional.
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={addDbDesignRow}
+              >
+                + Add Design Row
+              </button>
+            </div>
+
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Design / Code</th>
+                    <th>Width</th>
+                    <th>HSN</th>
+                    <th>GST %</th>
+                    <th>RRP</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dbDesignRows.map((row, index) => (
+                    <tr key={`db-design-row-${index}`}>
+                      <td>
+                        <input
+                          type="text"
+                          value={row.design_code}
+                          onChange={(event) =>
+                            updateDbDesignRow(index, "design_code", event.target.value)
+                          }
+                          placeholder="Design code"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="text"
+                          value={row.width}
+                          onChange={(event) =>
+                            updateDbDesignRow(index, "width", event.target.value)
+                          }
+                          placeholder='54"'
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="text"
+                          value={row.hsn}
+                          onChange={(event) =>
+                            updateDbDesignRow(index, "hsn", event.target.value)
+                          }
+                          placeholder="HSN"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={row.gst_percent}
+                          onChange={(event) =>
+                            updateDbDesignRow(index, "gst_percent", event.target.value)
+                          }
+                          placeholder="5"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={row.rrp}
+                          onChange={(event) =>
+                            updateDbDesignRow(index, "rrp", event.target.value)
+                          }
+                          placeholder="650"
+                        />
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => removeDbDesignRow(index)}
+                          disabled={dbDesignRows.length === 1}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="pricelist-db-manager-actions">
+              <div className="muted">
+                Save creates only the missing brand/catalogue level you selected, then adds these designs to that catalogue.
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleSaveDbEntry}
+                disabled={isSavingDbEntry}
+              >
+                {isSavingDbEntry ? "Saving..." : "Save to Supabase"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </details>
 
       <details className="pricelist-import-section">
         <summary>Update Pricelist Database from Excel</summary>

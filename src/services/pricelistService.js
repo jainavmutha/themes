@@ -95,27 +95,42 @@ export async function createPricelistItems(items) {
   }
 
   const rows = items.map((item) => ({
-    catalogue_id: item.catalogueId,
-    design_code: item.designCode || null,
+    catalogue_id: item.catalogue_id ?? item.catalogueId,
+    design_code: item.design_code ?? item.designCode ?? null,
     description: item.description || null,
     width: item.width || null,
     hsn: item.hsn || null,
     gst_percent:
-      item.gstPercent === "" || item.gstPercent == null
+      (item.gst_percent ?? item.gstPercent) === "" ||
+      (item.gst_percent ?? item.gstPercent) == null
         ? null
-        : Number(item.gstPercent),
+        : Number(item.gst_percent ?? item.gstPercent),
     rrp: Number(item.rrp || 0),
   }));
 
-  return (
-    (await supabaseFetch(
+  const batchSize = 500;
+  const saved = [];
+
+  for (let index = 0; index < rows.length; index += batchSize) {
+    const batch = rows.slice(index, index + batchSize);
+
+    const result = await supabaseFetch(
       `/rest/v1/${SUPABASE_PRICELIST_ITEMS_TABLE}`,
       {
         method: "POST",
-        body: JSON.stringify(rows),
+        headers: {
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify(batch),
       }
-    )) || []
-  );
+    );
+
+    if (Array.isArray(result)) {
+      saved.push(...result);
+    }
+  }
+
+  return saved;
 }
 
 
@@ -539,6 +554,78 @@ export async function importParsedPricelist(parsedPricelist, onProgress) {
     importedItems,
   };
 }
+export async function deletePricelistBrand(brandId) {
+  if (!brandId) {
+    throw new Error("Brand is required.");
+  }
+
+  const result = await supabaseFetch(
+    `/rest/v1/${SUPABASE_PRICELIST_BRANDS_TABLE}?id=eq.${encodeURIComponent(brandId)}`,
+    {
+      method: "DELETE",
+      headers: {
+        Prefer: "return=representation",
+      },
+    }
+  );
+
+  if (!Array.isArray(result) || result.length === 0) {
+    throw new Error(
+      "Supabase did not delete the brand. DELETE may be blocked by Row Level Security (RLS)."
+    );
+  }
+
+  return result[0];
+}
+
+export async function deletePricelistCatalogue(catalogueId) {
+  if (!catalogueId) {
+    throw new Error("Catalogue is required.");
+  }
+
+  const result = await supabaseFetch(
+    `/rest/v1/${SUPABASE_PRICELIST_CATALOGUES_TABLE}?id=eq.${encodeURIComponent(catalogueId)}`,
+    {
+      method: "DELETE",
+      headers: {
+        Prefer: "return=representation",
+      },
+    }
+  );
+
+  if (!Array.isArray(result) || result.length === 0) {
+    throw new Error(
+      "Supabase did not delete the catalogue. DELETE may be blocked by Row Level Security (RLS)."
+    );
+  }
+
+  return result[0];
+}
+
+export async function deletePricelistItem(itemId) {
+  if (!itemId) {
+    throw new Error("Design is required.");
+  }
+
+  const result = await supabaseFetch(
+    `/rest/v1/${SUPABASE_PRICELIST_ITEMS_TABLE}?id=eq.${encodeURIComponent(itemId)}`,
+    {
+      method: "DELETE",
+      headers: {
+        Prefer: "return=representation",
+      },
+    }
+  );
+
+  if (!Array.isArray(result) || result.length === 0) {
+    throw new Error(
+      "Supabase did not delete the design. DELETE may be blocked by Row Level Security (RLS)."
+    );
+  }
+
+  return result[0];
+}
+
 export async function updatePricelistItems(items) {
   if (!Array.isArray(items) || items.length === 0) {
     return [];
