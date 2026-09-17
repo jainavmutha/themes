@@ -399,6 +399,7 @@ export function computeRoomCost(
       : [];
 
   let totalClothCost = 0;
+  let totalLineDiscount = 0;
   let totalStitchingCost = 0;
   let totalLiningCost = 0;
   let totalMeters = 0;
@@ -482,6 +483,9 @@ export function computeRoomCost(
       totalClothCost +=
         discountedClothCost;
 
+      totalLineDiscount +=
+        clothDiscountAmount;
+
       totalStitchingCost +=
         fc.stitchingCost;
 
@@ -536,6 +540,10 @@ export function computeRoomCost(
     totalTrackCost +
     installationCost;
 
+  const baseSubtotal =
+    subtotal +
+    totalLineDiscount;
+
   return {
     panels,
     totalMeters,
@@ -544,6 +552,11 @@ export function computeRoomCost(
 
     clothCost:
       totalClothCost,
+
+    lineDiscountTotal:
+      totalLineDiscount,
+
+    baseSubtotal,
 
     stitchingCost:
       totalStitchingCost,

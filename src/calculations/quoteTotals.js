@@ -19,32 +19,12 @@ function getFabricRawCost(fabric) {
   );
 }
 
-function computeLinewiseFabricDiscount(rooms) {
-  return (rooms || []).reduce((roomSum, room) => {
-    if (room?.include === false) return roomSum;
-
-    const fabrics = Array.isArray(room?.fabrics)
-      ? room.fabrics
-      : [];
-
-    const roomDiscount = fabrics.reduce(
-      (fabricSum, fabric) => {
-        const rawCost = getFabricRawCost(fabric);
-        const discountPercent = Math.min(
-          100,
-          Math.max(0, toNum(fabric?.discountPercent))
-        );
-
-        return (
-          fabricSum +
-          rawCost * (discountPercent / 100)
-        );
-      },
-      0
-    );
-
-    return roomSum + roomDiscount;
-  }, 0);
+function computeLinewiseFabricDiscount(roomTotals) {
+  return (roomTotals || []).reduce(
+    (sum, entry) =>
+      sum + toNum(entry?.cost?.lineDiscountTotal),
+    0
+  );
 }
 
 export function computeAllTotals(
@@ -68,6 +48,15 @@ export function computeAllTotals(
     (s, x) => s + x.cost.clothCost,
     0
   );
+
+  // computeRoomCost already applies each fabric/wallpaper/mattress line discount
+  // to clothCost. Keep the discount separately so the summary can show the
+  // original base value and the full discount without subtracting it twice.
+  const linewiseDiscountAmount =
+    computeLinewiseFabricDiscount(roomTotals);
+
+  const rawClothTotal =
+    clothTotal + linewiseDiscountAmount;
 
   const stitchingTotal = roomTotals.reduce(
     (s, x) => s + x.cost.stitchingCost,
@@ -118,12 +107,9 @@ export function computeAllTotals(
 
   const sameDiscountAmount =
     commercials?.discountType === "percent"
-      ? clothTotal *
+      ? rawClothTotal *
         (toNum(commercials?.discountValue) / 100)
       : toNum(commercials?.discountValue);
-
-  const linewiseDiscountAmount =
-    computeLinewiseFabricDiscount(effectiveRooms);
 
   const rawProfitDiscountAmount =
     discountMode === "linewise"
@@ -132,12 +118,12 @@ export function computeAllTotals(
 
   const profitDiscountAmount = Math.min(
     Math.max(0, rawProfitDiscountAmount),
-    clothTotal
+    rawClothTotal
   );
 
   const discountedFabricBase = Math.max(
     0,
-    clothTotal - profitDiscountAmount
+    rawClothTotal - profitDiscountAmount
   );
 
   const otherTotal =
@@ -160,14 +146,17 @@ export function computeAllTotals(
     discountMode === "linewise"
       ? linewiseDiscountAmount
       : discountType === "percent"
-        ? clothTotal *
+        ? rawClothTotal *
           (toNum(discountValue) / 100)
         : toNum(discountValue);
 
-  const netFabricTotal = Math.max(
-    0,
-    clothTotal - discountAmount
-  );
+  const netFabricTotal =
+    discountMode === "linewise"
+      ? Math.max(0, clothTotal)
+      : Math.max(
+          0,
+          rawClothTotal - discountAmount
+        );
 
   const roundedNetFabricTotal = Math.round(netFabricTotal);
   const roundedOtherTotal = Math.round(otherTotal);
@@ -201,7 +190,7 @@ export function computeAllTotals(
 
     summary: {
       clothTotal:
-        Math.round(clothTotal),
+        Math.round(rawClothTotal),
 
       stitchingTotal:
         Math.round(stitchingTotal),
@@ -223,7 +212,7 @@ export function computeAllTotals(
 
       base:
         Math.round(
-          clothTotal +
+          rawClothTotal +
             otherTotal
         ),
 
@@ -263,7 +252,7 @@ export function computeAllTotals(
 
       estimatedFabricProfit:
         Math.round(
-          clothTotal * 0.47 -
+          rawClothTotal * 0.47 -
             profitDiscountAmount
         ),
 
@@ -274,7 +263,7 @@ export function computeAllTotals(
 
       estimatedProfit:
         Math.round(
-          clothTotal * 0.47 -
+          rawClothTotal * 0.47 -
             profitDiscountAmount +
             otherTotal * 0.56
         ),
