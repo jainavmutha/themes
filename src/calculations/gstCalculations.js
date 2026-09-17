@@ -218,8 +218,31 @@ function computeGstBreakdown(
             (discountPercent / 100)
       );
 
+      const selectedMiscCategory =
+        typeof item?.gstCategory === "string"
+          ? gstCategories.find(
+              (category) => category.id === item.gstCategory
+            )
+          : item?.gstCategory?.id
+            ? gstCategories.find(
+                (category) =>
+                  category.id === item.gstCategory.id
+              ) || item.gstCategory
+            : null;
+
+      const explicitMiscRate =
+        item?.gstRate ??
+        item?.gstPercent ??
+        item?.gst;
+
+      const miscCategory = selectedMiscCategory || {
+        id: `misc_${Math.max(0, toNum(explicitMiscRate ?? 0))}`,
+        label: "Miscellaneous",
+        rate: Math.max(0, toNum(explicitMiscRate ?? 0)),
+      };
+
       addToCategory(
-        serviceCategory,
+        miscCategory,
         miscBase
       );
     }

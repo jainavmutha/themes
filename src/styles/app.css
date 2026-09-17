@@ -3690,3 +3690,66 @@ body {
   color: #F5F2F4 !important;
   border-color: #3C3C42 !important;
 }
+/* =========================================================
+   DARK THEME – MISCELLANEOUS COSTS
+   Match the rest of the charcoal dark UI.
+   ========================================================= */
+.misc-cost-row .input,
+.misc-cost-row .select,
+.misc-cost-row .unit-input__field,
+.misc-costs-list > .grid-3 .input,
+.misc-costs-list > .grid-3 .select,
+.misc-costs-list > .grid-3 .unit-input__field {
+  background: #242428 !important;
+  color: #F3F1F2 !important;
+  -webkit-text-fill-color: #F3F1F2 !important;
+  caret-color: #F3F1F2 !important;
+  border-color: #414149 !important;
+  box-shadow: none !important;
+}
+
+.misc-cost-row .input::placeholder,
+.misc-cost-row .unit-input__field::placeholder,
+.misc-costs-list > .grid-3 .input::placeholder,
+.misc-costs-list > .grid-3 .unit-input__field::placeholder {
+  color: #858087 !important;
+  -webkit-text-fill-color: #858087 !important;
+  opacity: 1 !important;
+}
+
+.misc-cost-row .select,
+.misc-costs-list > .grid-3 .select {
+  color-scheme: dark !important;
+}
+
+.misc-cost-row .select option,
+.misc-costs-list > .grid-3 .select option {
+  background: #242428 !important;
+  color: #F3F1F2 !important;
+}
+
+.misc-cost-row .input:hover,
+.misc-cost-row .select:hover,
+.misc-cost-row .unit-input__field:hover,
+.misc-costs-list > .grid-3 .input:hover,
+.misc-costs-list > .grid-3 .select:hover,
+.misc-costs-list > .grid-3 .unit-input__field:hover {
+  border-color: #555560 !important;
+}
+
+.misc-cost-row .input:focus,
+.misc-cost-row .select:focus,
+.misc-cost-row .unit-input__field:focus,
+.misc-costs-list > .grid-3 .input:focus,
+.misc-costs-list > .grid-3 .select:focus,
+.misc-costs-list > .grid-3 .unit-input__field:focus {
+  border-color: #D33A8B !important;
+  box-shadow: 0 0 0 3px rgba(211, 58, 139, 0.14) !important;
+}
+
+.misc-cost-row .unit-input__suffix,
+.misc-costs-list > .grid-3 .unit-input__suffix {
+  background: rgba(211, 58, 139, 0.16) !important;
+  color: #F16CAF !important;
+  border-color: rgba(211, 58, 139, 0.34) !important;
+}
