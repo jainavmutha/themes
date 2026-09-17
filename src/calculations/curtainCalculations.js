@@ -431,6 +431,28 @@ export function computeRoomCost(
           normalizedFab
         );
 
+      // Apply the line-level discount to the material/cloth value for every
+      // fabric type, including wallpaper and mattress. Older saved quotes may
+      // use slightly different property names, so support all of them.
+      const lineDiscountPercent = Math.max(
+        0,
+        Math.min(
+          100,
+          toNum(
+            normalizedFab.lineDiscount ??
+              normalizedFab.discountPercent ??
+              normalizedFab.discount ??
+              0
+          )
+        )
+      );
+
+      const rawClothCost = toNum(fc.clothCost);
+      const clothDiscountAmount =
+        rawClothCost * (lineDiscountPercent / 100);
+      const discountedClothCost =
+        rawClothCost - clothDiscountAmount;
+
       const selectedTrackRate =
         normalizedFab.track
           ?.ratePerFt;
@@ -458,7 +480,7 @@ export function computeRoomCost(
           : 0;
 
       totalClothCost +=
-        fc.clothCost;
+        discountedClothCost;
 
       totalStitchingCost +=
         fc.stitchingCost;
@@ -480,6 +502,10 @@ export function computeRoomCost(
       return {
         ...normalizedFab,
         ...fc,
+        rawClothCost,
+        lineDiscountPercent,
+        clothDiscountAmount,
+        clothCost: discountedClothCost,
         trackCost:
           fabricTrackCost,
       };
