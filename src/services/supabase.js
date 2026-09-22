@@ -22,6 +22,18 @@ export const SUPABASE_PRICELIST_CATALOGUES_TABLE =
 export const SUPABASE_PRICELIST_ITEMS_TABLE =
   "pricelist_items";
 
+export const SUPABASE_TAILORS_TABLE =
+  "tailors";
+
+export const SUPABASE_TAILOR_SERVICES_TABLE =
+  "tailor_services";
+
+export const SUPABASE_TAILOR_JOBS_TABLE =
+  "tailor_jobs";
+
+export const SUPABASE_TAILOR_PAYMENTS_TABLE =
+  "tailor_payments";
+
 export function hasSupabaseConfig() {
   return Boolean(
     SUPABASE_URL &&
@@ -53,17 +65,24 @@ export async function supabaseFetch(
   path,
   options = {}
 ) {
-  const res = await fetch(
-    `${SUPABASE_URL}${path}`,
-    {
-      ...options,
+  const normalizedPath = String(path || "");
 
-      headers:
-        supabaseHeaders(
-          options.headers || {}
-        ),
-    }
-  );
+  const url =
+    normalizedPath.startsWith("http://") ||
+    normalizedPath.startsWith("https://")
+      ? normalizedPath
+      : normalizedPath.startsWith("/rest/v1/")
+      ? `${SUPABASE_URL}${normalizedPath}`
+      : normalizedPath.startsWith("rest/v1/")
+      ? `${SUPABASE_URL}/${normalizedPath}`
+      : `${SUPABASE_URL}/rest/v1/${normalizedPath.replace(/^\/+/, "")}`;
+
+  const res = await fetch(url, {
+    ...options,
+    headers: supabaseHeaders(
+      options.headers || {}
+    ),
+  });
 
   const text = await res
     .text()

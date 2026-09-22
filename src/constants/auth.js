@@ -21,6 +21,7 @@ export const STAFF_ALLOWED_TABS = new Set([
   "pricelists",
   "settings",
   "fabric-processing",
+  "tailors",
 ]);
 
 export function canAccessTab(user, tab) {

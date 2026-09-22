@@ -32,6 +32,7 @@ import SavedQuotes from "./components/SavedQuotes.jsx";
 import HeroBar from "./components/HeroBar.jsx";
 import Tabs from "./components/Tabs.jsx";
 import QuoteEditor from "./components/QuoteEditor.jsx";
+import Tailors from "./components/Tailors.jsx";
 
 import {
   generateFullPDF,
@@ -224,6 +225,11 @@ const {
     handleSaveQuote={handleSaveQuote}
   />
 )} 
+
+        {/* TAILORS TAB */}
+        {activeTab === "tailors" && (
+          <Tailors />
+        )}
 
         {/* ORDER PROCESSING TAB */}
         {activeTab === 'order-processing' && (

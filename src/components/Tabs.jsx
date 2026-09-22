@@ -17,6 +17,7 @@ export default function Tabs({
     ["quote", "Quote"],
     ["order-processing", "Order Processing"],
     ["fabric-processing", "Fabric Processing"],
+    ["tailors", "Tailors"],
     ["payments", "Payments"],
     ["history", "Saved Quotes"],
     ["dashboard", "Dashboard"],
